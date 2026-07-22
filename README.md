@@ -2,10 +2,12 @@
 
 [![CI](https://github.com/L1M80/porta/actions/workflows/ci.yml/badge.svg)](https://github.com/L1M80/porta/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-0.13.0-green)
+![Version](https://img.shields.io/badge/version-0.13.0%2Bwilden.01-green)
 
-Remote web interface for [Antigravity](https://antigravity.google/) Agent Manager.  
+Remote web interface for [Antigravity](https://antigravity.google/) Agent Manager.
 Access your local Antigravity sessions from your phone, tablet, or any remote browser through a lightweight LSP bridge.
+
+Current Wilden build: **0.13.0+wilden.01**. Based on upstream **0.13.0**.
 
 Porta is a two-part system: a **proxy** that bridges your local Antigravity Language Server to the network, and a **web UI** (installable PWA) that gives you a mobile-friendly chat interface.
 
@@ -35,6 +37,47 @@ pnpm dev               # proxy (:3170) + web (:3070)
 
 Open `http://localhost:3070` in your browser.
 
+### Password authentication
+
+Porta supports a lightweight single-administrator password mode. It does not
+create user accounts, registration, password reset, RBAC, OAuth, OIDC, or
+database-backed users.
+
+Authentication is disabled by default:
+
+```bash
+PORTA_AUTH_MODE=disabled
+```
+
+To require a password before using Porta:
+
+```bash
+PORTA_AUTH_MODE=password
+PORTA_PASSWORD=change-me
+```
+
+`PORTA_AUTH_MODE` accepts only `disabled` or `password`. In password mode,
+`PORTA_PASSWORD` is required and must be non-empty; invalid authentication
+configuration fails during proxy startup before any HTTP listener is exposed.
+
+In password mode, all Porta API and WebSocket requests require a signed
+HttpOnly session cookie. The password is validated only by the local proxy and
+is never exposed to the frontend. Sessions use a seven-day persistent cookie
+with `SameSite=Lax`; logout clears the browser cookie immediately. Sessions
+survive proxy restarts as long as the configured password stays the same;
+changing `PORTA_PASSWORD` invalidates existing sessions.
+
+For deployments behind HTTPS reverse proxies, forward `X-Forwarded-Proto:
+https` so Porta can mark login cookies as secure. Local HTTP development keeps
+cookies usable on `localhost`.
+
+The static SPA shell is public by design. Unauthenticated browsers can retrieve
+`index.html`, compiled JavaScript and CSS bundles, icons, the web manifest, the
+service worker, and other non-sensitive static assets. Sensitive data remains
+behind authenticated API and WebSocket requests; do not place secrets,
+credentials, private runtime configuration, or environment-specific material in
+frontend source or public assets.
+
 ### LAN access
 
 To access from another device on your home network:
@@ -52,6 +95,22 @@ Wildcard binds (`0.0.0.0`, `::`) are rejected by default and require `PORTA_ALLO
 > ```bash
 > pnpm --filter @porta/web dev -- --host
 > ```
+
+When exposing the web UI beyond localhost, set `PORTA_AUTH_MODE=password` and
+serve Porta through HTTPS or a trusted authenticated reverse proxy.
+
+### Version convention
+
+This fork tracks the upstream release plus a local build suffix:
+
+- Upstream base: `0.13.0`
+- Wilden build: `0.13.0+wilden.01`
+
+The root `package.json` version is the release source of truth. The web build
+injects that version, derives the upstream base from the part before `+`, and
+injects a short Git commit SHA when build-time Git metadata is available. If a
+production build has no `.git` directory and no injected SHA, the UI displays
+`unknown` for the commit.
 
 ## Why Porta?
 
@@ -167,6 +226,8 @@ Set the proxy runtime and Cloudflare-related variables in `.env`:
 
 ```bash
 # .env
+PORTA_AUTH_MODE=password
+PORTA_PASSWORD=<A_LONG_ADMIN_PASSWORD>
 PORTA_CORS_ORIGINS=https://<YOUR_PAGES_DOMAIN>
 PORTA_TUNNEL_NAME=<YOUR_TUNNEL_NAME>
 PORTA_CF_PROJECT=<YOUR_PROJECT_NAME>

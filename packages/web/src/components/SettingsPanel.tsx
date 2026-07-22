@@ -17,6 +17,11 @@ import {
   type BrowserNotificationPermission,
 } from "../utils/browserNotifications";
 import type { ClientSettings } from "../types";
+import {
+  PORTA_GIT_SHA,
+  PORTA_UPSTREAM_VERSION,
+  PORTA_VERSION,
+} from "../version";
 import type { PlannerType } from "./ChatInput";
 
 interface ModelConfig {
@@ -31,9 +36,10 @@ interface Props {
   settings: ClientSettings;
   onUpdate: (patch: Partial<ClientSettings>) => void;
   onBack: () => void;
+  onLogout?: () => void;
 }
 
-export function SettingsPanel({ settings, onUpdate, onBack }: Props) {
+export function SettingsPanel({ settings, onUpdate, onBack, onLogout }: Props) {
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [fetchError, setFetchError] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -241,10 +247,35 @@ export function SettingsPanel({ settings, onUpdate, onBack }: Props) {
           </div>
         </div>
 
+        {/* Build */}
+        <div className="settings-section">
+          <h2 className="settings-section-title">About</h2>
+          <div className="settings-build-list">
+            <div className="settings-build-row">
+              <span>Version</span>
+              <code>{PORTA_VERSION}</code>
+            </div>
+            <div className="settings-build-row">
+              <span>Based on upstream</span>
+              <code>{PORTA_UPSTREAM_VERSION}</code>
+            </div>
+            <div className="settings-build-row">
+              <span>Commit</span>
+              <code>{PORTA_GIT_SHA}</code>
+            </div>
+          </div>
+        </div>
+
         {/* ── Reset ── */}
         <button className="settings-reset-btn" onClick={handleReset}>
           Reset all settings to defaults
         </button>
+
+        {onLogout && (
+          <button className="settings-logout-btn" onClick={onLogout}>
+            Logout
+          </button>
+        )}
       </div>
     </div>
   );

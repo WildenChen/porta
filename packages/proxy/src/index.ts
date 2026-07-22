@@ -23,6 +23,12 @@ import {
 } from "./exposure.js";
 import { getAllowedOrigins, resolveCorsOrigin } from "./origins.js";
 import { setupWebSocket } from "./ws.js";
+import {
+  type AuthProvider,
+  authMiddleware,
+  createAuthProvider,
+  registerAuthRoutes,
+} from "./auth.js";
 
 const PORT = parseInt(process.env.PORTA_PORT ?? "3170", 10);
 const HOST = resolveProxyHost();
@@ -30,6 +36,13 @@ const HOST = resolveProxyHost();
 assertSupportedListenHost(HOST, process.env);
 
 const app = new Hono();
+let authProvider: AuthProvider;
+try {
+  authProvider = createAuthProvider();
+} catch (err) {
+  console.error((err as Error).message);
+  process.exit(1);
+}
 
 // ── Middleware ──
 
@@ -41,6 +54,9 @@ app.use(
     origin: (origin) => resolveCorsOrigin(origin, ALLOWED_ORIGINS),
   }),
 );
+
+registerAuthRoutes(app, authProvider);
+app.use("/api/*", authMiddleware(authProvider));
 
 // ── Health ──
 
@@ -75,7 +91,7 @@ console.log(`🚀 Porta proxy starting on ${listenAddress}`);
 
 const server = createAdaptorServer({ fetch: app.fetch, port: PORT });
 
-setupWebSocket(server, PORT, ALLOWED_ORIGINS);
+setupWebSocket(server, PORT, ALLOWED_ORIGINS, authProvider);
 
 void discovery
   .getInstances()

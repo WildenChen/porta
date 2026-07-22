@@ -92,6 +92,30 @@ describe("WS upgrade validation", () => {
     ).toEqual({ ok: false, code: "forbidden_origin" });
   });
 
+  it("rejects unauthenticated upgrades when an auth provider is supplied", () => {
+    expect(
+      validateWebSocketUpgrade(
+        "/api/conversations/abc123/ws",
+        "http://localhost:3070",
+        3100,
+        getAllowedOrigins({}),
+        {
+          mode: "password",
+          status: () => ({
+            mode: "password",
+            enabled: true,
+            authenticated: false,
+            configured: true,
+          }),
+          login: async () => null,
+          logout: () => {},
+          isRequestAuthenticated: () => false,
+          isCookieHeaderAuthenticated: () => false,
+        },
+      ),
+    ).toEqual({ ok: false, code: "unauthorized" });
+  });
+
   it("ignores unrelated upgrade paths", () => {
     expect(
       validateWebSocketUpgrade(

@@ -31,6 +31,7 @@ import {
   placeholderStep,
 } from "./step-recovery.js";
 import { conversationSignals } from "./signals.js";
+import type { AuthProvider } from "./auth.js";
 
 /** Active polling interval (ms). */
 const ACTIVE_INTERVAL = 200;
@@ -77,7 +78,7 @@ type PollState = "idle" | "active";
 
 type UpgradeValidationResult =
   | { ok: true; cascadeId: string }
-  | { ok: false; code: "not_found" | "forbidden_origin" };
+  | { ok: false; code: "not_found" | "forbidden_origin" | "unauthorized" };
 
 function unrefTimer(
   timer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>,
@@ -145,6 +146,8 @@ export function validateWebSocketUpgrade(
   origin: string | undefined,
   port: number,
   allowedOrigins: AllowedOrigin[] = getAllowedOrigins(),
+  authProvider?: AuthProvider,
+  cookieHeader?: string,
 ): UpgradeValidationResult {
   const url = new URL(reqUrl ?? "", `http://localhost:${port}`);
   const match = url.pathname.match(/^\/api\/conversations\/([^/]+)\/ws$/);
@@ -154,6 +157,9 @@ export function validateWebSocketUpgrade(
   if (!isWebSocketOriginAllowed(origin, allowedOrigins)) {
     return { ok: false, code: "forbidden_origin" };
   }
+  if (authProvider && !authProvider.isCookieHeaderAuthenticated(cookieHeader)) {
+    return { ok: false, code: "unauthorized" };
+  }
   return { ok: true, cascadeId: match[1] };
 }
 
@@ -161,6 +167,7 @@ export function setupWebSocket(
   server: { on: Function },
   port: number,
   allowedOrigins: AllowedOrigin[] = getAllowedOrigins(),
+  authProvider?: AuthProvider,
 ): void {
   const wss = new WebSocketServer({ noServer: true });
 
@@ -170,11 +177,14 @@ export function setupWebSocket(
       req.headers.origin,
       port,
       allowedOrigins,
+      authProvider,
+      req.headers.cookie,
     );
 
     if (!upgrade.ok) {
-      if (upgrade.code === "forbidden_origin") {
-        socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      if (upgrade.code === "forbidden_origin" || upgrade.code === "unauthorized") {
+        const status = upgrade.code === "unauthorized" ? "401 Unauthorized" : "403 Forbidden";
+        socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
       } else {
         socket.destroy();
       }

@@ -46,6 +46,13 @@ export interface HealthResponse {
   }[];
 }
 
+export interface AuthStatus {
+  mode: "disabled" | "password";
+  enabled: boolean;
+  authenticated: boolean;
+  configured: boolean;
+}
+
 export type ConversationStatus =
   | "CASCADE_RUN_STATUS_IDLE"
   | "CASCADE_RUN_STATUS_RUNNING"

@@ -30,23 +30,42 @@ export const onRequest: any = async (context: any) => {
     headers.delete("Origin");
     headers.delete("Referer");
 
-    const newRequest = new Request(targetUrl.toString(), {
+    const requestInit: RequestInit & { duplex?: "half" } = {
         method: request.method,
         headers,
         body: request.method !== "GET" && request.method !== "HEAD" ? request.body : null,
         redirect: "manual"
-    });
+    };
+    if (requestInit.body) {
+        requestInit.duplex = "half";
+    }
+
+    const newRequest = new Request(targetUrl.toString(), requestInit);
 
     const response = await fetch(newRequest);
 
-    // Clone the response so we can modify the headers
-    const finalResponse = new Response(response.body, response);
-    
-    // CRITICAL FIX: Cloudflare Access on the API backend might return a `Set-Cookie: CF_Authorization` 
-    // because it processed the request. If we forward this cookie back to the browser, it OVERWRITES 
-    // the user's frontend CF_Authorization cookie, immediately corrupting their frontend session!
-    // This causes all subsequent frontend requests to be rejected by Cloudflare Access with a 302/403.
-    finalResponse.headers.delete("Set-Cookie");
-    
-    return finalResponse;
+    const headersOut = new Headers(response.headers);
+    const getSetCookie = response.headers.getSetCookie?.bind(response.headers);
+    const setCookies = getSetCookie
+        ? getSetCookie()
+        : response.headers.get("Set-Cookie")
+            ? [response.headers.get("Set-Cookie") as string]
+            : [];
+
+    // Cloudflare Access on the API backend might return a `Set-Cookie:
+    // CF_Authorization` because it processed the request. Forwarding that cookie
+    // can overwrite the user's frontend Access session, but Porta's own
+    // `porta_session` cookie must pass through for password auth.
+    headersOut.delete("Set-Cookie");
+    for (const cookie of setCookies) {
+        if (!/^CF_Authorization=/i.test(cookie)) {
+            headersOut.append("Set-Cookie", cookie);
+        }
+    }
+
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: headersOut,
+    });
 };

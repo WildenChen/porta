@@ -40,6 +40,19 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  authStatus: () => request<import("../types").AuthStatus>("/api/auth/status"),
+
+  login: (password: string) =>
+    request<import("../types").AuthStatus>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+
+  logout: () =>
+    request<import("../types").AuthStatus>("/api/auth/logout", {
+      method: "POST",
+    }),
+
   health: () => request<import("../types").HealthResponse>("/api/health"),
 
   conversations: () =>

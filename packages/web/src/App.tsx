@@ -21,17 +21,39 @@ import { useDraftText } from "./hooks/useDraftText";
 import { useChatActions } from "./hooks/useChatActions";
 import { useClientSettings } from "./hooks/useClientSettings";
 import { api } from "./api/client";
+import { useAuthStatus } from "./components/AuthGate";
 import { isUnconfirmedOptimisticMessage } from "./utils/optimisticMessages";
 import type { AskQuestionEntry, HealthResponse, MediaAttachment } from "./types";
 import type { PlannerType } from "./components/ChatInput";
 
 export default function App() {
+  const { status, refreshStatus } = useAuthStatus();
+  const [authEpoch, setAuthEpoch] = useState(0);
+
+  const handleLogout = useCallback(async () => {
+    await api.logout();
+    await refreshStatus();
+    setAuthEpoch((value) => value + 1);
+    window.location.assign("/");
+  }, [refreshStatus]);
+
+  const settingsLogout = status.enabled ? handleLogout : undefined;
+
   return (
-    <Routes>
+    <Routes key={authEpoch}>
       <Route path="/" element={<RootRedirect />} />
-      <Route path="/:projectSlug/settings" element={<ChatView />} />
-      <Route path="/:projectSlug" element={<ChatView />} />
-      <Route path="/:projectSlug/:chatId" element={<ChatView />} />
+      <Route
+        path="/:projectSlug/settings"
+        element={<ChatView onLogout={settingsLogout} />}
+      />
+      <Route
+        path="/:projectSlug"
+        element={<ChatView onLogout={settingsLogout} />}
+      />
+      <Route
+        path="/:projectSlug/:chatId"
+        element={<ChatView onLogout={settingsLogout} />}
+      />
     </Routes>
   );
 }
@@ -65,7 +87,7 @@ function RootRedirect() {
 
 // ── Main Chat View ──
 
-function ChatView() {
+function ChatView({ onLogout }: { onLogout?: () => void }) {
   const { projectSlug, chatId } = useParams<{
     projectSlug: string;
     chatId: string;
@@ -306,6 +328,7 @@ function ChatView() {
             settings={settings}
             onUpdate={updateSettings}
             onBack={() => navigate(`/${projectSlug ?? "unknown"}`)}
+            onLogout={onLogout}
           />
         ) : activeId ? (
           <ChatPanel

@@ -4,11 +4,14 @@ import { BrowserRouter } from "react-router-dom";
 import { PORTA_BASE_PATH } from "./basePath";
 import "./index.css";
 import App from "./App";
+import { AuthGate } from "./components/AuthGate";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter basename={PORTA_BASE_PATH}>
-      <App />
+      <AuthGate>
+        <App />
+      </AuthGate>
     </BrowserRouter>
   </StrictMode>,
 );
