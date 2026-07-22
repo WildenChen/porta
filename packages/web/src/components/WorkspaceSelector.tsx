@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { IconFolder } from "./Icons";
+import { slugFromUri } from "../hooks/useWorkspaces";
+import { rememberLastProjectSlug } from "../utils/projectPreference";
 
 interface Props {
   workspaces: { uri: string; name: string }[];
@@ -50,6 +52,10 @@ export function WorkspaceSelector({ workspaces, selected, onSelect }: Props) {
                 key={ws.uri}
                 className={`model-option ${isActive ? "active" : ""}`}
                 onClick={() => {
+                  rememberLastProjectSlug(
+                    slugFromUri(ws.uri),
+                    workspaces.map((workspace) => slugFromUri(workspace.uri)),
+                  );
                   onSelect(ws.uri);
                   setOpen(false);
                 }}

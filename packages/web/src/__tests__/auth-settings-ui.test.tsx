@@ -21,6 +21,7 @@ function renderSettings() {
         defaultModel: null,
         defaultPlannerType: "conversational",
         browserNotificationsEnabled: false,
+        defaultProject: { mode: "last-used" },
       }}
       onUpdate={() => {}}
       onBack={() => {}}

@@ -140,6 +140,41 @@
   color: var(--text-primary);
 }
 
+.settings-workspace-controls {
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+  max-width: 260px;
+  width: 100%;
+}
+
+.settings-workspace-controls .settings-select {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+.settings-workspace-warning,
+.settings-workspace-status {
+  margin-top: 8px;
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.settings-workspace-warning {
+  color: #fbbf24;
+  background: rgb(245 158 11 / 0.08);
+  border: 1px solid rgb(245 158 11 / 0.24);
+}
+
+.settings-workspace-status {
+  color: var(--text-tertiary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
 /* Notification toggle */
 
 .settings-notification-control {
@@ -370,6 +405,19 @@
 }
 
 @media (max-width: 420px) {
+  .settings-body {
+    padding: 16px;
+  }
+
+  .settings-workspace-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-workspace-controls {
+    max-width: none;
+  }
+
   .settings-password-input-wrap {
     grid-template-columns: 1fr;
   }

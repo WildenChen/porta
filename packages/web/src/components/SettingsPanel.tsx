@@ -23,6 +23,7 @@ import {
   PORTA_VERSION,
 } from "../version";
 import type { PlannerType } from "./ChatInput";
+import { slugFromUri } from "../hooks/useWorkspaces";
 
 interface ModelConfig {
   label: string;
@@ -35,6 +36,7 @@ interface ModelConfig {
 interface Props {
   settings: ClientSettings;
   onUpdate: (patch: Partial<ClientSettings>) => void;
+  workspaces?: { uri: string; name: string }[];
   onBack: () => void;
   onLogout?: () => void;
 }
@@ -88,7 +90,13 @@ function PasswordField({
   );
 }
 
-export function SettingsPanel({ settings, onUpdate, onBack, onLogout }: Props) {
+export function SettingsPanel({
+  settings,
+  onUpdate,
+  workspaces = [],
+  onBack,
+  onLogout,
+}: Props) {
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [fetchError, setFetchError] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -209,6 +217,7 @@ export function SettingsPanel({ settings, onUpdate, onBack, onLogout }: Props) {
       defaultModel: null,
       defaultPlannerType: "conversational",
       browserNotificationsEnabled: false,
+      defaultProject: { mode: "last-used" },
     });
     flashSaved();
   }, [onUpdate, flashSaved]);
@@ -332,6 +341,33 @@ export function SettingsPanel({ settings, onUpdate, onBack, onLogout }: Props) {
         : notificationsChecked
           ? "On"
           : "Off";
+  const workspaceOptions = workspaces.map((workspace) => ({
+    ...workspace,
+    slug: slugFromUri(workspace.uri),
+  }));
+  const fixedProjectAvailable =
+    settings.defaultProject.mode === "fixed" &&
+    workspaceOptions.some(
+      (workspace) => workspace.slug === settings.defaultProject.fixedProjectSlug,
+    );
+
+  const handleDefaultProjectModeChange = (mode: "last-used" | "fixed") => {
+    if (mode === "last-used") {
+      onUpdate({ defaultProject: { mode: "last-used" } });
+    } else {
+      const fixedProjectSlug =
+        settings.defaultProject.fixedProjectSlug ?? workspaceOptions[0]?.slug;
+      if (!fixedProjectSlug) return;
+      onUpdate({ defaultProject: { mode: "fixed", fixedProjectSlug } });
+    }
+    flashSaved();
+  };
+
+  const handleFixedProjectChange = (fixedProjectSlug: string) => {
+    if (!fixedProjectSlug) return;
+    onUpdate({ defaultProject: { mode: "fixed", fixedProjectSlug } });
+    flashSaved();
+  };
 
   return (
     <div className="settings-panel">
@@ -350,6 +386,66 @@ export function SettingsPanel({ settings, onUpdate, onBack, onLogout }: Props) {
       </div>
 
       <div className="settings-body">
+        <div className="settings-section">
+          <h2 className="settings-section-title">Workspace</h2>
+          <div className="settings-row settings-workspace-row">
+            <div className="settings-row-info">
+              <span className="settings-row-label">Default project</span>
+              <span className="settings-row-desc">
+                Project opened when you visit Porta without a project URL.
+              </span>
+            </div>
+            <div className="settings-workspace-controls">
+              <select
+                className="settings-select"
+                aria-label="Default project mode"
+                value={settings.defaultProject.mode}
+                onChange={(event) =>
+                  handleDefaultProjectModeChange(
+                    event.target.value as "last-used" | "fixed",
+                  )
+                }
+              >
+                <option value="last-used">Last used</option>
+                <option value="fixed" disabled={workspaceOptions.length === 0}>
+                  Fixed workspace
+                </option>
+              </select>
+              {settings.defaultProject.mode === "fixed" && (
+                <select
+                  className="settings-select"
+                  aria-label="Fixed workspace"
+                  value={fixedProjectAvailable ? settings.defaultProject.fixedProjectSlug : ""}
+                  onChange={(event) => handleFixedProjectChange(event.target.value)}
+                  disabled={workspaceOptions.length === 0}
+                >
+                  {!fixedProjectAvailable && (
+                    <option value="" disabled>
+                      Select workspace
+                    </option>
+                  )}
+                  {workspaceOptions.map((workspace) => (
+                    <option key={workspace.uri} value={workspace.slug}>
+                      {workspace.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+          {settings.defaultProject.mode === "fixed" && !fixedProjectAvailable && (
+            <div className="settings-workspace-warning" role="status">
+              Previously selected workspace is currently unavailable. Porta will use
+              the last used or first available workspace until you select another one.
+            </div>
+          )}
+          {workspaceOptions.length === 0 && (
+            <div className="settings-workspace-status" role="status">
+              No workspaces are currently available.
+            </div>
+          )}
+        </div>
+
         {/* Authentication */}
         <div className="settings-section">
           <h2 className="settings-section-title">Authentication</h2>

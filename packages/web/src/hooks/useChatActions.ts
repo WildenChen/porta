@@ -6,6 +6,7 @@ import { slugFromUri } from "./useWorkspaces";
 import type { ChatMessage, MediaAttachment } from "../types";
 import type { PlannerType } from "../components/ChatInput";
 import { DEFAULT_MODEL } from "../constants";
+import { rememberLastProjectSlug } from "../utils/projectPreference";
 
 interface UseChatActionsArgs {
   activeId: string | null;
@@ -134,6 +135,9 @@ export function useChatActions({
             granted,
           );
           cascadeId = result.cascadeId;
+          if (currentWorkspaceUri && projectSlug) {
+            rememberLastProjectSlug(projectSlug, [slugFromUri(currentWorkspaceUri)]);
+          }
           navigate(`/${projectSlug}/${cascadeId}`, { replace: true });
         }
 

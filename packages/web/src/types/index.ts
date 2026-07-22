@@ -297,6 +297,13 @@ export interface ChatMessage {
 
 // ── Client Settings ──
 
+export type DefaultProjectMode = "last-used" | "fixed";
+
+export interface ProjectPreference {
+  mode: DefaultProjectMode;
+  fixedProjectSlug?: string;
+}
+
 export interface ClientSettings {
   /** Model ID used when the user hasn't explicitly picked one per-message. */
   defaultModel: string | null;
@@ -304,4 +311,6 @@ export interface ClientSettings {
   defaultPlannerType: "conversational" | "planning";
   /** Enables browser notifications for run completion and approval requests. */
   browserNotificationsEnabled: boolean;
+  /** Controls which project is selected when opening the root route. */
+  defaultProject: ProjectPreference;
 }

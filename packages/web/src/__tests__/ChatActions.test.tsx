@@ -1,5 +1,5 @@
 import { renderHook, act } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { useChatActions } from "../hooks/useChatActions";
 import { BrowserRouter } from "react-router-dom";
 import * as client from "../api/client";
@@ -26,6 +26,11 @@ describe("useChatActions", () => {
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <BrowserRouter>{children}</BrowserRouter>
   );
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
 
   it("initializes with correct default state", () => {
     const { result } = renderHook(() => useChatActions(defaultArgs), {
@@ -119,5 +124,27 @@ describe("useChatActions", () => {
 
     expect(result.current.optimisticMessages).toHaveLength(1);
     expect(result.current.optimisticMessages[0].optimisticId).toBe("opt-2");
+  });
+
+  it("remembers the verified project when creating a conversation", async () => {
+    vi.mocked(client.api.startConversation).mockResolvedValueOnce({
+      cascadeId: "new-id",
+    });
+    vi.mocked(client.api.sendMessage).mockResolvedValueOnce(undefined);
+    const { result } = renderHook(
+      () =>
+        useChatActions({
+          ...defaultArgs,
+          activeId: null,
+          currentWorkspaceUri: "file:///test/test-ws",
+        }),
+      { wrapper },
+    );
+
+    await act(async () => {
+      await result.current.handleSend("hello", null);
+    });
+
+    expect(localStorage.getItem("porta:lastProjectSlug")).toBe("test-ws");
   });
 });

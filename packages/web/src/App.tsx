@@ -19,12 +19,21 @@ import { usePolling } from "./hooks/usePolling";
 import { useWorkspaces, slugFromUri } from "./hooks/useWorkspaces";
 import { useDraftText } from "./hooks/useDraftText";
 import { useChatActions } from "./hooks/useChatActions";
-import { useClientSettings } from "./hooks/useClientSettings";
+import { useRememberLastProject } from "./hooks/useLastProject";
+import {
+  readClientSettings,
+  useClientSettings,
+} from "./hooks/useClientSettings";
 import { api } from "./api/client";
 import { useAuthStatus } from "./components/AuthGate";
 import { isUnconfirmedOptimisticMessage } from "./utils/optimisticMessages";
 import type { AskQuestionEntry, HealthResponse, MediaAttachment } from "./types";
 import type { PlannerType } from "./components/ChatInput";
+import {
+  readLastProjectSlug,
+  rememberLastProjectSlug,
+  resolveDefaultProject,
+} from "./utils/projectPreference";
 
 export default function App() {
   const { status, refreshStatus } = useAuthStatus();
@@ -58,21 +67,24 @@ export default function App() {
   );
 }
 
-// ── Root redirect: go to the first workspace's new-chat page ──
+// ── Root redirect: resolve the configured or last-used workspace ──
 
-function RootRedirect() {
+export function RootRedirect() {
   const [target, setTarget] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .getWorkspaces()
       .then((data) => {
-        const first = data.workspaceInfos?.[0];
-        if (first) {
-          setTarget(`/${slugFromUri(first.workspaceUri)}`);
-        } else {
-          setTarget("/unknown");
-        }
+        const validProjectSlugs = (data.workspaceInfos ?? []).map((workspace) =>
+          slugFromUri(workspace.workspaceUri),
+        );
+        const projectSlug = resolveDefaultProject({
+          validProjectSlugs,
+          preference: readClientSettings().defaultProject,
+          lastProjectSlug: readLastProjectSlug(),
+        });
+        setTarget(projectSlug ? `/${projectSlug}` : "/unknown");
       })
       .catch(() => {
         // If the API fails, stay put — ChatView will handle empty state
@@ -108,6 +120,8 @@ function ChatView({ onLogout }: { onLogout?: () => void }) {
   );
   const { draftText, handleDraftChange } = useDraftText(activeId);
   const { settings, updateSettings } = useClientSettings();
+
+  useRememberLastProject(projectSlug, currentWorkspaceUri, workspaces);
 
   const activeConv = conversations.find((c) => c.id === activeId);
   const isRunning = activeConv?.summary.status === "CASCADE_RUN_STATUS_RUNNING";
@@ -296,7 +310,13 @@ function ChatView({ onLogout }: { onLogout?: () => void }) {
         activeId={activeId}
         onSelect={(id) => {
           setOptimisticMessages([]);
-          navigate(chatUrl(id));
+          const target = chatUrl(id);
+          const targetSlug = target.split("/")[1];
+          rememberLastProjectSlug(
+            targetSlug,
+            workspaces.map((workspace) => slugFromUri(workspace.uri)),
+          );
+          navigate(target);
           if (isMobile()) setSidebarOpen(false);
         }}
         onNew={handleNew}
@@ -327,6 +347,7 @@ function ChatView({ onLogout }: { onLogout?: () => void }) {
           <SettingsPanel
             settings={settings}
             onUpdate={updateSettings}
+            workspaces={workspaces}
             onBack={() => navigate(`/${projectSlug ?? "unknown"}`)}
             onLogout={onLogout}
           />

@@ -64,7 +64,8 @@ afterEach(async () => {
 
 describe("auth provider", () => {
   it("keeps disabled mode compatible with existing behavior", async () => {
-    const app = createApp({ PORTA_AUTH_MODE: "disabled" });
+    const dataDir = await tempDataDir();
+    const app = createApp({ PORTA_AUTH_MODE: "disabled" }, { dataDir });
 
     const status = await app.request("/api/auth/status");
     const privateRoute = await app.request("/api/private");

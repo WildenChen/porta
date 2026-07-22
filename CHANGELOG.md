@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0+wilden.03] - 2026-07-22
+
+### Added
+
+- Remember the last used project across reloads and login sessions.
+- Configurable default project in Settings with Last used and fixed workspace
+  options.
+
+### Fixed
+
+- Root navigation safely falls back to the last used or first available
+  workspace when a fixed project is unavailable.
+
 ## [0.13.0+wilden.02] - 2026-07-22
 
 ### Added

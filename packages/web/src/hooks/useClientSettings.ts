@@ -8,20 +8,38 @@
 import { useState, useEffect, useCallback } from "react";
 import type { ClientSettings } from "../types";
 import { DEFAULT_MODEL } from "../constants";
+import {
+  DEFAULT_PROJECT_PREFERENCE,
+  normalizeProjectPreference,
+} from "../utils/projectPreference";
 
-const STORAGE_KEY = "porta:settings";
+export const CLIENT_SETTINGS_STORAGE_KEY = "porta:settings";
 
-const DEFAULT_SETTINGS: ClientSettings = {
+export const DEFAULT_SETTINGS: ClientSettings = {
   defaultModel: DEFAULT_MODEL,
   defaultPlannerType: "conversational",
   browserNotificationsEnabled: false,
+  defaultProject: DEFAULT_PROJECT_PREFERENCE,
 };
 
-function readSettings(): ClientSettings {
+export function parseClientSettings(raw: string | null): ClientSettings {
+  if (!raw) return { ...DEFAULT_SETTINGS };
+
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_SETTINGS };
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw) as Partial<ClientSettings>;
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      defaultProject: normalizeProjectPreference(parsed.defaultProject),
+    };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+export function readClientSettings(): ClientSettings {
+  try {
+    return parseClientSettings(localStorage.getItem(CLIENT_SETTINGS_STORAGE_KEY));
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -29,20 +47,20 @@ function readSettings(): ClientSettings {
 
 function writeSettings(settings: ClientSettings): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(CLIENT_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   } catch {
     // Storage full or unavailable — silently degrade
   }
 }
 
 export function useClientSettings() {
-  const [settings, setSettings] = useState<ClientSettings>(readSettings);
+  const [settings, setSettings] = useState<ClientSettings>(readClientSettings);
 
   // Listen for cross-tab storage events
   useEffect(() => {
     const handler = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) {
-        setSettings(readSettings());
+      if (e.key === CLIENT_SETTINGS_STORAGE_KEY) {
+        setSettings(readClientSettings());
       }
     };
     window.addEventListener("storage", handler);
