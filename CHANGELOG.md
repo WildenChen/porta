@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0+wilden.02] - 2026-07-22
+
+### Added
+
+- Settings page controls for enabling, changing, and disabling the built-in
+  single-administrator Password Authentication mode.
+- Server-side runtime auth configuration with scrypt password verifiers,
+  atomic writes, and current-user-only file permissions.
+- Auth settings API exposing mode, session duration, status, and password
+  policy without returning password verifiers or signing material.
+
+### Security
+
+- First-time Password mode enablement is limited to the local Porta host so a
+  remote unauthenticated visitor cannot claim the first password.
+- Password changes and disabling Password mode rotate session signing material
+  and clear browser sessions.
+
 ## [0.13.0] - 2026-07-13
 
 ### Added

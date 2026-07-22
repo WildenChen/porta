@@ -242,6 +242,143 @@
   text-align: right;
 }
 
+/* Authentication */
+
+.settings-auth-mode-select {
+  min-width: 120px;
+}
+
+.settings-auth-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.settings-password-field {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-field-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-password-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.settings-password-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.settings-password-input:focus {
+  outline: none;
+  border-color: rgb(var(--c-accent));
+}
+
+.settings-password-visibility,
+.settings-primary-btn,
+.settings-danger-btn {
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.settings-password-visibility {
+  min-width: 64px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.settings-primary-btn,
+.settings-danger-btn {
+  min-height: 42px;
+  padding: 10px 14px;
+}
+
+.settings-primary-btn {
+  border: none;
+  background: rgb(var(--c-accent));
+  color: white;
+}
+
+.settings-danger-btn {
+  border: 1px solid rgb(var(--c-error) / 0.35);
+  background: rgb(var(--c-error) / 0.14);
+  color: rgb(var(--c-error));
+}
+
+.settings-password-visibility:disabled,
+.settings-primary-btn:disabled,
+.settings-danger-btn:disabled,
+.settings-password-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.settings-auth-error,
+.settings-auth-message,
+.settings-auth-warning {
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-auth-error {
+  color: rgb(var(--c-error));
+  background: rgb(var(--c-error) / 0.08);
+  border: 1px solid rgb(var(--c-error) / 0.22);
+}
+
+.settings-auth-message {
+  color: rgb(var(--c-success));
+  background: rgb(var(--c-success) / 0.08);
+  border: 1px solid rgb(var(--c-success) / 0.22);
+}
+
+.settings-auth-warning {
+  color: #fbbf24;
+  background: rgb(245 158 11 / 0.08);
+  border: 1px solid rgb(245 158 11 / 0.24);
+}
+
+.settings-auth-confirm {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.settings-auth-confirm input {
+  margin-top: 2px;
+}
+
+@media (max-width: 420px) {
+  .settings-password-input-wrap {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-password-visibility {
+    min-height: 38px;
+  }
+}
+
 /* ── Feedback ── */
 
 .settings-saved-badge {

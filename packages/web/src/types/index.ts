@@ -53,6 +53,15 @@ export interface AuthStatus {
   configured: boolean;
 }
 
+export interface AuthSettings {
+  mode: "disabled" | "password";
+  sessionDuration: { seconds: number; label: string };
+  configured: boolean;
+  status: "Disabled" | "Password protection enabled";
+  passwordPolicy: { minLength: number };
+  canEnablePassword: boolean;
+}
+
 export type ConversationStatus =
   | "CASCADE_RUN_STATUS_IDLE"
   | "CASCADE_RUN_STATUS_RUNNING"

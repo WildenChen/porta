@@ -53,6 +53,34 @@ export const api = {
       method: "POST",
     }),
 
+  authSettings: () =>
+    request<import("../types").AuthSettings>("/api/auth/settings"),
+
+  enablePasswordAuth: (password: string, confirmPassword: string) =>
+    request<import("../types").AuthStatus>("/api/auth/settings/password", {
+      method: "POST",
+      body: JSON.stringify({ password, confirmPassword }),
+    }),
+
+  changePasswordAuth: (
+    currentPassword: string,
+    newPassword: string,
+    confirmPassword: string,
+  ) =>
+    request<import("../types").AuthStatus>(
+      "/api/auth/settings/password/change",
+      {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword }),
+      },
+    ),
+
+  disablePasswordAuth: (currentPassword: string) =>
+    request<import("../types").AuthStatus>("/api/auth/settings/disable", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword }),
+    }),
+
   health: () => request<import("../types").HealthResponse>("/api/health"),
 
   conversations: () =>
