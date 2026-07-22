@@ -133,6 +133,7 @@ export function ChatInput({
   const fileErrorTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isSendingRef = useRef(false);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -173,11 +174,13 @@ export function ChatInput({
   }, []);
 
   const handleSubmit = useCallback(async () => {
+    if (isSendingRef.current) return;
     const trimmed = draft.trim();
     if ((!trimmed && attachments.length === 0) || disabled || isPreparingAttachments) {
       return;
     }
 
+    isSendingRef.current = true;
     setIsPreparingAttachments(true);
 
     try {
@@ -190,7 +193,7 @@ export function ChatInput({
         }));
       }
 
-      onSend(trimmed || " ", model, media, plannerType);
+      await onSend(trimmed || " ", model, media, plannerType);
       onDraftChange("");
       attachments.forEach((attachment) => {
         URL.revokeObjectURL(attachment.dataUrl);
@@ -205,6 +208,7 @@ export function ChatInput({
       );
     } finally {
       setIsPreparingAttachments(false);
+      isSendingRef.current = false;
     }
   }, [
     draft,
@@ -219,15 +223,6 @@ export function ChatInput({
   ]);
 
   const inputDisabled = disabled || isPreparingAttachments;
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      // On mobile, Enter inserts a newline — send via button only
-      if (window.innerWidth <= 480 || inputDisabled) return;
-      e.preventDefault();
-      handleSubmit();
-    }
-  };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onDraftChange(e.target.value);
@@ -341,7 +336,6 @@ export function ChatInput({
             placeholder="Send a message..."
             value={draft}
             onChange={handleInput}
-            onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             rows={1}
             disabled={inputDisabled}
@@ -394,12 +388,13 @@ export function ChatInput({
               </button>
             )}
             <button
+              type="button"
               className="chat-send-btn"
               onClick={handleSubmit}
               disabled={
                 (!draft.trim() && attachments.length === 0) || inputDisabled
               }
-              title={isPreparingAttachments ? "Processing images..." : "Send (Enter)"}
+              title={isPreparingAttachments ? "Processing images..." : "Send"}
             >
               ↑
             </button>
