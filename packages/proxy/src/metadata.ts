@@ -184,18 +184,40 @@ function safeDecodeUriComponent(value: string): string {
   }
 }
 
-export async function getProjectNameMap(): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+export interface ProjectInfo {
+  id: string;
+  name: string;
+  folderUris: string[];
+}
+
+export async function getProjectInfos(): Promise<ProjectInfo[]> {
+  const projects: ProjectInfo[] = [];
   const projectsDir = join(homedir(), ".gemini", "config", "projects");
   try {
     const files = await readdir(projectsDir);
     for (const file of files) {
-      if (file.endsWith(".json")) {
+      if (file.endsWith(".json") && file !== "outside-of-project.json") {
         try {
           const content = await readFile(join(projectsDir, file), "utf8");
           const data = JSON.parse(content);
           if (data.id && data.name) {
-            map.set(data.id, safeDecodeUriComponent(data.name));
+            const folderUris: string[] = [];
+            const resources = data.projectResources?.resources;
+            if (Array.isArray(resources)) {
+              for (const res of resources) {
+                if (typeof res.folderUri === "string") {
+                  folderUris.push(res.folderUri);
+                }
+                if (typeof res.gitFolder?.folderUri === "string") {
+                  folderUris.push(res.gitFolder.folderUri);
+                }
+              }
+            }
+            projects.push({
+              id: data.id,
+              name: safeDecodeUriComponent(data.name),
+              folderUris,
+            });
           }
         } catch {
           // ignore invalid json
@@ -205,5 +227,36 @@ export async function getProjectNameMap(): Promise<Map<string, string>> {
   } catch {
     // projects dir missing or unreadable
   }
+  return projects;
+}
+
+export async function getProjectNameMap(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const projects = await getProjectInfos();
+  for (const proj of projects) {
+    map.set(proj.id, proj.name);
+  }
   return map;
 }
+
+export async function findProjectIdForWorkspaceUri(
+  workspaceUri: string | undefined,
+): Promise<string | undefined> {
+  if (!workspaceUri) return undefined;
+  const normalizedTarget = workspaceUri.replace(/\/$/, "");
+  const projects = await getProjectInfos();
+
+  for (const project of projects) {
+    for (const folderUri of project.folderUris) {
+      const normalizedFolder = folderUri.replace(/\/$/, "");
+      if (
+        normalizedTarget === normalizedFolder ||
+        normalizedTarget.startsWith(normalizedFolder + "/")
+      ) {
+        return project.id;
+      }
+    }
+  }
+  return undefined;
+}
+

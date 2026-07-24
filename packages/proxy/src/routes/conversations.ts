@@ -22,6 +22,7 @@ import {
   scanDiskConversations,
   withNormalizedConversationWorkspaces,
   getProjectNameMap,
+  findProjectIdForWorkspaceUri,
 } from "../metadata.js";
 import { handleRPCError } from "../errors.js";
 import { runConversationMutation } from "../conversation-mutations.js";
@@ -216,7 +217,11 @@ export function registerConversationRoutes(app: Hono): void {
               const normalizedSummary =
                 withNormalizedConversationWorkspaces(summary);
 
-              const projectId = (normalizedSummary.trajectoryMetadata as any)?.projectId;
+              const wsUri = getPrimaryWorkspaceUri(normalizedSummary);
+              let projectId = (normalizedSummary.trajectoryMetadata as any)?.projectId;
+              if (!projectId && wsUri) {
+                projectId = await findProjectIdForWorkspaceUri(wsUri);
+              }
               if (projectId) {
                 const projectName = projectNameMap.get(projectId);
                 if (projectName) {
@@ -224,7 +229,6 @@ export function registerConversationRoutes(app: Hono): void {
                 }
               }
 
-              const wsUri = getPrimaryWorkspaceUri(normalizedSummary);
               if (wsUri) {
                 conversationAffinity.set(id, uriToWorkspaceId(wsUri));
               }
@@ -541,6 +545,8 @@ export function registerConversationRoutes(app: Hono): void {
             ? [workspaceUri]
             : [];
 
+      const projectId = await findProjectIdForWorkspaceUri(workspaceUri);
+
       const data = await rpc.call(
         "StartCascade",
         {
@@ -553,6 +559,18 @@ export function registerConversationRoutes(app: Hono): void {
           ...(workspaceUri ? { workspaceFolderAbsoluteUri: workspaceUri } : {}),
           ...(startWorkspaceUris.length > 0
             ? { workspaceUris: startWorkspaceUris }
+            : {}),
+          ...(projectId
+            ? {
+                projectId,
+                trajectoryMetadata: {
+                  ...(typeof body.trajectoryMetadata === "object" &&
+                  body.trajectoryMetadata !== null
+                    ? (body.trajectoryMetadata as Record<string, unknown>)
+                    : {}),
+                  projectId,
+                },
+              }
             : {}),
         },
         targetInstance,

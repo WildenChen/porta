@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0+wilden.04] - 2026-07-24
+
+### Fixed
+
+- Resolve and pass `projectId` from Antigravity config (`~/.gemini/config/projects/*.json`) when starting a cascade, preventing sessions created in Porta from showing up as "Outside of Project" / 獨立對話 in Antigravity Desktop.
+
 ## [0.13.0+wilden.03] - 2026-07-22
 
 ### Added

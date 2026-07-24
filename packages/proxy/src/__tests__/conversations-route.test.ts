@@ -660,3 +660,42 @@ describe("POST /api/conversations/:id/command-action", () => {
     );
   });
 });
+
+describe("POST /api/conversations", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    conversationAffinity.clear();
+    conversationInstanceAffinity.clear();
+    mockScanDiskConversations.mockResolvedValue([]);
+    mockRpcCall.mockResolvedValue({ cascadeId: "new-cascade-1" });
+  });
+
+  it("passes workspaceFolderAbsoluteUri and workspaceUris to StartCascade", async () => {
+    const scopedLS = makeInstance({
+      pid: 10,
+      workspaceId: "file_home_user_projectA",
+    });
+    mockGetInstances.mockResolvedValue([scopedLS]);
+
+    const res = await app().request("/api/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceFolderAbsoluteUri: "file:///home/user/projectA",
+      }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body).toEqual({ cascadeId: "new-cascade-1" });
+    expect(mockRpcCall).toHaveBeenCalledWith(
+      "StartCascade",
+      expect.objectContaining({
+        workspaceFolderAbsoluteUri: "file:///home/user/projectA",
+        workspaceUris: ["file:///home/user/projectA"],
+      }),
+      scopedLS,
+    );
+  });
+});
+
