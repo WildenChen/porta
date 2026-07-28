@@ -1,0 +1,84 @@
+name: Agent Issue 2 Project ID Tests
+
+on:
+  push:
+    branches:
+      - agent/issue-2-project-id-tests
+    paths:
+      - .github/workflows/agent-issue-2-project-id-tests.yml
+
+permissions:
+  contents: write
+
+jobs:
+  update-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/issue-2-project-id-tests
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Add projectId regression coverage
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/proxy/src/__tests__/conversations-route.test.ts")
+          text = path.read_text()
+
+          old = "const mockRpcForConversation = vi.fn();\nconst mockGetStepCount = vi.fn();"
+          new = "const mockRpcForConversation = vi.fn();\nconst mockGetStepCount = vi.fn();\nconst mockFindProjectIdForWorkspaceUri = vi.fn();"
+          if old not in text:
+              raise SystemExit("mock declaration anchor not found")
+          text = text.replace(old, new, 1)
+
+          old = "    ...actual,\n    scanDiskConversations: mockScanDiskConversations,\n  };"
+          new = "    ...actual,\n    scanDiskConversations: mockScanDiskConversations,\n    findProjectIdForWorkspaceUri: mockFindProjectIdForWorkspaceUri,\n  };"
+          if old not in text:
+              raise SystemExit("metadata mock anchor not found")
+          text = text.replace(old, new, 1)
+
+          old = "    mockScanDiskConversations.mockResolvedValue([]);\n    mockRpcCall.mockResolvedValue({ cascadeId: \"new-cascade-1\" });"
+          new = "    mockScanDiskConversations.mockResolvedValue([]);\n    mockFindProjectIdForWorkspaceUri.mockResolvedValue(\"project-a\");\n    mockRpcCall.mockResolvedValue({ cascadeId: \"new-cascade-1\" });"
+          if old not in text:
+              raise SystemExit("POST beforeEach anchor not found")
+          text = text.replace(old, new, 1)
+
+          old = "        workspaceFolderAbsoluteUri: \"file:///home/user/projectA\",\n        workspaceUris: [\"file:///home/user/projectA\"],"
+          new = "        workspaceFolderAbsoluteUri: \"file:///home/user/projectA\",\n        workspaceUris: [\"file:///home/user/projectA\"],\n        projectId: \"project-a\",\n        trajectoryMetadata: expect.objectContaining({ projectId: \"project-a\" }),"
+          if old not in text:
+              raise SystemExit("StartCascade assertion anchor not found")
+          text = text.replace(old, new, 1)
+
+          anchor = "  });\n});\n"
+          idx = text.rfind(anchor)
+          if idx < 0:
+              raise SystemExit("final describe anchor not found")
+          extra = '''  });\n\n  it("omits projectId when no Antigravity project matches", async () => {\n    const scopedLS = makeInstance({\n      pid: 11,\n      workspaceId: "file_home_user_projectB",\n    });\n    mockGetInstances.mockResolvedValue([scopedLS]);\n    mockFindProjectIdForWorkspaceUri.mockResolvedValue(undefined);\n\n    const res = await app().request("/api/conversations", {\n      method: "POST",\n      headers: { "Content-Type": "application/json" },\n      body: JSON.stringify({\n        workspaceFolderAbsoluteUri: "file:///home/user/projectB",\n      }),\n    });\n\n    expect(res.status).toBe(201);\n    const [, params] = mockRpcCall.mock.calls.at(-1)!;\n    expect(params).not.toHaveProperty("projectId");\n    expect(params).not.toHaveProperty("trajectoryMetadata");\n  });\n});\n'''
+          text = text[:idx] + extra + text[idx + len(anchor):]
+          path.write_text(text)
+          PY
+
+      - name: Install dependencies and test
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm test
+
+      - name: Remove one-time workflow and commit
+        run: |
+          rm .github/workflows/agent-issue-2-project-id-tests.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/proxy/src/__tests__/conversations-route.test.ts .github/workflows/agent-issue-2-project-id-tests.yml
+          git commit -m "test: cover StartCascade projectId association"
+          git push origin HEAD:agent/issue-2-project-id-tests
