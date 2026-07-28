@@ -1,13 +1,13 @@
 # Porta
 
-[![CI](https://github.com/L1M80/porta/actions/workflows/ci.yml/badge.svg)](https://github.com/L1M80/porta/actions/workflows/ci.yml)
+[![CI](https://github.com/WildenChen/porta/actions/workflows/ci.yml/badge.svg)](https://github.com/WildenChen/porta/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-0.13.0%2Bwilden.03-green)
+![Version](https://img.shields.io/badge/version-0.13.0%2Bwilden.04-green)
 
 Remote web interface for [Antigravity](https://antigravity.google/) Agent Manager.
 Access your local Antigravity sessions from your phone, tablet, or any remote browser through a lightweight LSP bridge.
 
-Current Wilden build: **0.13.0+wilden.03**. Based on upstream **0.13.0**.
+Current Wilden build: **0.13.0+wilden.04**. Based on upstream **0.13.0**.
 
 Porta is a two-part system: a **proxy** that bridges your local Antigravity Language Server to the network, and a **web UI** (installable PWA) that gives you a mobile-friendly chat interface.
 
@@ -28,7 +28,7 @@ Porta is a two-part system: a **proxy** that bridges your local Antigravity Lang
 > running, the proxy will start but cannot connect to any session.
 
 ```bash
-git clone https://github.com/L1M80/porta.git
+git clone https://github.com/WildenChen/porta.git
 cd porta
 pnpm install
 cp .env.example .env   # edit if needed — see comments inside
@@ -137,7 +137,7 @@ and serve Porta through HTTPS or a trusted authenticated reverse proxy.
 This fork tracks the upstream release plus a local build suffix:
 
 - Upstream base: `0.13.0`
-- Wilden build: `0.13.0+wilden.03`
+- Wilden build: `0.13.0+wilden.04`
 
 The root `package.json` version is the release source of truth. The web build
 injects that version, derives the upstream base from the part before `+`, and
