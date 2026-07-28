@@ -25,8 +25,8 @@ vi.mock("../api/client", () => ({
 
 describe("build version UI", () => {
   it("derives version metadata from build-time values", () => {
-    expect(PORTA_VERSION).toMatch(/^0\.13\.0\+wilden\.\d+$/);
-    expect(PORTA_UPSTREAM_VERSION).toBe("0.13.0");
+    expect(PORTA_VERSION).toMatch(/^0\.14\.0\+wilden\.\d+$/);
+    expect(PORTA_UPSTREAM_VERSION).toBe("0.14.0");
     expect(PORTA_GIT_SHA).toMatch(/^[a-f0-9]{7,}|unknown$/);
   });
 

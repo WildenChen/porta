@@ -2,12 +2,12 @@
 
 [![CI](https://github.com/WildenChen/porta/actions/workflows/ci.yml/badge.svg)](https://github.com/WildenChen/porta/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-0.13.0%2Bwilden.05-green)
+![Version](https://img.shields.io/badge/version-0.14.0%2Bwilden.01-green)
 
 Remote web interface for [Antigravity](https://antigravity.google/) Agent Manager.
 Access your local Antigravity sessions from your phone, tablet, or any remote browser through a lightweight LSP bridge.
 
-Current Wilden build: **0.13.0+wilden.05**. Based on upstream **0.13.0**.
+Current Wilden build: **0.14.0+wilden.01**. Based on upstream **0.14.0**.
 
 Porta is a two-part system: a **proxy** that discovers and routes across local Antigravity Language Server instances, and a **web UI** (installable PWA) that gives you a mobile-friendly chat interface.
 
@@ -111,6 +111,24 @@ behind authenticated API and WebSocket requests; do not place secrets,
 credentials, private runtime configuration, or environment-specific material in
 frontend source or public assets.
 
+### Optional outer access gate
+
+Upstream 0.14.0 adds a separate Vite access gate for deployments that expose the
+web development server through a public reverse proxy or tunnel. It protects the
+page, `/api`, and WebSocket upgrades before Porta's built-in password login. It
+is disabled by default and is not required for local or ordinary LAN use:
+
+```bash
+PORTA_REQUIRE_AUTH=1
+PORTA_ACCESS_TOKEN=<at-least-32-random-characters>
+PORTA_ALLOWED_HOSTS=porta.example.com
+PORTA_CORS_ORIGINS=https://porta.example.com
+```
+
+Visit `https://porta.example.com/?access_token=<token>` once to set the secure
+HttpOnly cookie. This outer token gate complements rather than replaces the
+built-in password mode or an edge service such as Cloudflare Access.
+
 ### LAN access
 
 To access from another device on your home network:
@@ -120,7 +138,7 @@ To access from another device on your home network:
 PORTA_HOST=192.168.1.23
 ```
 
-Devices on the same network can reach the proxy at `http://192.168.1.23:3170`.  
+Devices on the same network can reach the proxy at `http://192.168.1.23:3170`.
 Wildcard binds (`0.0.0.0`, `::`) are rejected by default and require `PORTA_ALLOW_WILDCARD=1`. Public IPs are rejected at startup for safety.
 
 > **Note:** to also access the Vite dev UI from LAN, start it with `--host`:
@@ -149,8 +167,8 @@ Antigravity reloads the full conversation metadata.
 
 This fork tracks the upstream release plus a local build suffix:
 
-- Upstream base: `0.13.0`
-- Wilden build: `0.13.0+wilden.05`
+- Upstream base: `0.14.0`
+- Wilden build: `0.14.0+wilden.01`
 
 The root `package.json` version is the release source of truth. The web build
 injects that version, derives the upstream base from the part before `+`, and
@@ -321,7 +339,7 @@ This reads `PORTA_TUNNEL_NAME` from `.env` and starts the proxy and
 
 ### 6. Securing your API with Cloudflare Access (Zero Trust)
 
-Exposing your local API to the public internet can be dangerous. To completely lock down your setup, you should protect **both** your frontend and your API using Cloudflare Access. 
+Exposing your local API to the public internet can be dangerous. To completely lock down your setup, you should protect **both** your frontend and your API using Cloudflare Access.
 
 Porta's built-in Edge Proxy securely bridges the two by injecting Machine-to-Machine authentication tokens, completely hiding your backend from the internet.
 
@@ -330,7 +348,7 @@ To set this up, follow these precise steps:
 **1. Create Two Separate Applications**
 In your **Cloudflare Zero Trust** dashboard, under **Access > Applications**, you must create **two** distinct applications:
 - **Frontend App**: Protects your Pages deployment (e.g., `https://<YOUR_PAGES_DOMAIN>`). Configure this with standard user login policies (e.g., email OTP).
-- **Backend API App**: Protects your Tunnel (e.g., `https://<YOUR_API_SUBDOMAIN>`). 
+- **Backend API App**: Protects your Tunnel (e.g., `https://<YOUR_API_SUBDOMAIN>`).
 
 **2. Generate Service Tokens**
 1. Navigate to **Access > Service Auth**.
@@ -351,7 +369,7 @@ In your **Cloudflare Zero Trust** dashboard, under **Access > Applications**, yo
 
 **5. Route Frontend Traffic Through the Proxy**
 By default, the Porta frontend tries to fetch the API directly. To force it to use the secure Edge Proxy:
-1. In your `.env.production` file, **remove or comment out** `VITE_API_BASE`. 
+1. In your `.env.production` file, **remove or comment out** `VITE_API_BASE`.
 2. Without `VITE_API_BASE`, the frontend falls back to root-relative API paths (`/api/*`), routing traffic through the Cloudflare Pages Edge proxy. `PORTA_BASE_PATH` only changes the frontend asset, router, and PWA paths.
 3. Run `pnpm deploy` again.
 
