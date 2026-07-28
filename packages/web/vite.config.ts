@@ -5,6 +5,7 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import { VitePWA } from "vite-plugin-pwa";
 import { normalizeBasePath } from "./src/basePath.shared";
+import { accessGate } from "./vite-access-gate";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const rootPackage = JSON.parse(
@@ -35,7 +36,6 @@ function toHttpOrigin(host: string, port: string) {
   return `http://${normalizedHost}:${port}`;
 }
 
-// https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, repoRoot, "");
   const proxyHost = env.PORTA_HOST || process.env.PORTA_HOST || "127.0.0.1";
@@ -44,9 +44,28 @@ export default defineConfig(({ mode }) => {
   const rawBasePath = env.PORTA_BASE_PATH || process.env.PORTA_BASE_PATH || "/";
   const basePath = normalizeBasePath(rawBasePath);
   const allowedHostsRaw = env.PORTA_ALLOWED_HOSTS || process.env.PORTA_ALLOWED_HOSTS;
-  const allowedHosts = allowedHostsRaw === "true" || allowedHostsRaw === "all" || allowedHostsRaw === "*"
-    ? true
-    : (allowedHostsRaw ? allowedHostsRaw.split(",") : undefined);
+  const allowedHostsValue = allowedHostsRaw?.trim();
+  const allowedHosts =
+    allowedHostsValue === "true" || allowedHostsValue === "all" || allowedHostsValue === "*"
+      ? true
+      : allowedHostsValue
+        ? allowedHostsValue.split(",").map((host) => host.trim()).filter(Boolean)
+        : undefined;
+
+  const requireAuthRaw = (
+    env.PORTA_REQUIRE_AUTH || process.env.PORTA_REQUIRE_AUTH || ""
+  ).trim();
+  const requireAuth = /^(1|true|yes|on)$/i.test(requireAuthRaw);
+  if (
+    requireAuthRaw &&
+    !requireAuth &&
+    !/^(0|false|no|off)$/i.test(requireAuthRaw)
+  ) {
+    throw new Error(
+      "PORTA_REQUIRE_AUTH must be one of 1/true/yes/on or 0/false/no/off.",
+    );
+  }
+  const accessToken = env.PORTA_ACCESS_TOKEN || process.env.PORTA_ACCESS_TOKEN || "";
 
   return {
     base: basePath,
@@ -59,22 +78,17 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.PORTA_GIT_SHA": JSON.stringify(gitSha()),
     },
     plugins: [
+      accessGate({ enabled: requireAuth, token: accessToken }),
       react(),
       VitePWA({
         registerType: "autoUpdate",
         workbox: {
-          // Only precache hashed static assets — NOT index.html.
-          // index.html must always come from the network so deploys
-          // take effect immediately. Hashed filenames (e.g. index-Ab12Cd.js)
-          // guarantee the SW cache entry matches the code version.
           globPatterns: ["**/*.{js,css,ico,png,svg,woff2}"],
           skipWaiting: true,
           clientsClaim: true,
-          // Don't create a NavigationRoute — let navigation requests
-          // hit the network (Cloudflare CDN) for a fresh index.html.
           navigateFallback: null,
         },
-        manifest: false, // Use our existing public/manifest.json
+        manifest: false,
         injectRegister: "script-defer",
         scope: basePath,
       }),
@@ -83,6 +97,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: env.PORTA_HOST || process.env.PORTA_HOST || "127.0.0.1",
       port: Number(env.PORTA_WEB_PORT || process.env.PORTA_WEB_PORT || 3070),
+      strictPort: true,
       ...(allowedHosts !== undefined ? { allowedHosts } : {}),
       proxy: {
         "/api": {
