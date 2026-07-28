@@ -21,6 +21,7 @@ import {
   getPrimaryWorkspaceUri,
   scanDiskConversations,
   withNormalizedConversationWorkspaces,
+  getProjectInfos,
   getProjectNameMap,
   findProjectIdForWorkspaceUri,
 } from "../metadata.js";
@@ -69,6 +70,14 @@ const warmedAt = new Map<string, number>();
  *  This handles LS restarts (conversations fall out of memory) and
  *  transient failures without manual intervention. */
 const WARM_TTL_MS = 60_000;
+
+function pruneWarmUpCache(activeDiskOnlyIds: Set<string>): void {
+  for (const cascadeId of warmedAt.keys()) {
+    if (!activeDiskOnlyIds.has(cascadeId)) {
+      warmedAt.delete(cascadeId);
+    }
+  }
+}
 
 function requestedWorkspaceUris(body: Record<string, unknown>): string[] {
   if (!Array.isArray(body.workspaceUris)) return [];
@@ -188,11 +197,11 @@ function warmUpDiskConversations(
   })();
 }
 
-
 export function registerConversationRoutes(app: Hono): void {
   app.get("/api/conversations", async (c) => {
     try {
-      const projectNameMap = await getProjectNameMap();
+      const projectInfos = await getProjectInfos();
+      const projectNameMap = await getProjectNameMap(projectInfos);
       const instances = await discovery.getInstances();
       const merged: Record<string, Record<string, unknown>> = {};
 
@@ -220,7 +229,10 @@ export function registerConversationRoutes(app: Hono): void {
               const wsUri = getPrimaryWorkspaceUri(normalizedSummary);
               let projectId = (normalizedSummary.trajectoryMetadata as any)?.projectId;
               if (!projectId && wsUri) {
-                projectId = await findProjectIdForWorkspaceUri(wsUri);
+                projectId = await findProjectIdForWorkspaceUri(
+                  wsUri,
+                  projectInfos,
+                );
               }
               if (projectId) {
                 const projectName = projectNameMap.get(projectId);
@@ -268,6 +280,7 @@ export function registerConversationRoutes(app: Hono): void {
 
       // Update affinity cache from merged results
       for (const [id, summary] of Object.entries(merged)) {
+        warmedAt.delete(id);
         const wsUri = getPrimaryWorkspaceUri(summary);
         if (wsUri) {
           conversationAffinity.set(id, uriToWorkspaceId(wsUri));
@@ -338,6 +351,8 @@ export function registerConversationRoutes(app: Hono): void {
         }
       }
 
+      pruneWarmUpCache(new Set(diskOnlyIds));
+
       // Background warm-up: touch disk-only conversations so each LS loads
       // them from .pb files. Once loaded, GetAllCascadeTrajectories returns
       // them with proper workspace metadata on the next poll cycle.
@@ -354,9 +369,15 @@ export function registerConversationRoutes(app: Hono): void {
   app.get("/api/conversations/:id", async (c) => {
     const id = c.req.param("id");
     try {
-      const data = await rpcForConversation("GetCascadeTrajectory", id, {
-        cascadeId: id,
-      }, undefined, true);
+      const data = await rpcForConversation(
+        "GetCascadeTrajectory",
+        id,
+        {
+          cascadeId: id,
+        },
+        undefined,
+        true,
+      );
       return c.json(data);
     } catch (err) {
       return handleRPCError(c, err);
@@ -675,6 +696,7 @@ export function registerConversationRoutes(app: Hono): void {
           metadata,
           cascadeId: id,
         });
+        warmedAt.delete(id);
         messageTracker.clearConversation(id);
         return c.json(data);
       });
@@ -747,8 +769,7 @@ export function registerConversationRoutes(app: Hono): void {
       if (!trajectoryId || stepIndex === undefined) {
         return c.json(
           {
-            error:
-              "Missing required fields: trajectoryId, stepIndex",
+            error: "Missing required fields: trajectoryId, stepIndex",
           },
           400,
         );
