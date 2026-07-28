@@ -71,6 +71,7 @@ describe("GET /api/workspaces", () => {
       {
         workspaceUri: "file:///C:/Users/deepk/porta",
         gitRootUri: "file:///C:/Users/deepk/porta",
+        projectAssociation: { matched: false },
       },
     ]);
   });
@@ -92,7 +93,7 @@ describe("GET /api/workspaces", () => {
       if (method === "GetAllCascadeTrajectories") {
         return {
           trajectorySummaries: {
-            "c1": {
+            c1: {
               workspaces: [
                 {
                   workspaceFolderAbsoluteUri: "file:///home/user/porta",
