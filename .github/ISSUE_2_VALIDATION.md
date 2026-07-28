@@ -1,1 +1,0 @@
-Temporary validation note: project metadata and StartCascade projectId regression coverage are provided by dedicated Vitest files in this branch. This file exists only to ensure the branch receives a final content update before PR creation and will be removed before merge if CI is available.
