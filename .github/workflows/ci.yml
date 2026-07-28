@@ -4,10 +4,12 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
+      - "eslint.config.*"
+      - "scripts/**"
       - "packages/proxy/src/**"
       - "packages/proxy/package.json"
       - "packages/proxy/tsconfig.json"
@@ -23,10 +25,12 @@ on:
       - "packages/web/vitest.e2e.config.ts"
   pull_request:
     paths:
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
+      - "eslint.config.*"
+      - "scripts/**"
       - "packages/proxy/src/**"
       - "packages/proxy/package.json"
       - "packages/proxy/tsconfig.json"
@@ -42,7 +46,45 @@ on:
       - "packages/web/vitest.e2e.config.ts"
   workflow_dispatch:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          pnpm lint 2>&1 | tee test-results/lint.log
+
+      - name: Upload lint diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-diagnostics
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
   test:
     strategy:
       fail-fast: false

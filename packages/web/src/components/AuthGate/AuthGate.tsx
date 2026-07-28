@@ -1,44 +1,47 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { api } from "../api/client";
-import type { AuthStatus } from "../types";
-import { PORTA_VERSION } from "../version";
-import { LoginPage } from "./LoginPage";
-
-interface AuthContextValue {
-  status: AuthStatus;
-  refreshStatus: () => Promise<void>;
-}
+import { api } from "../../api/client";
+import type { AuthStatus } from "../../types";
+import { PORTA_VERSION } from "../../version";
+import { LoginPage } from "../LoginPage";
+import { AuthContext } from "./authContext";
 
 interface Props {
   children: ReactNode;
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null);
-
-export function useAuthStatus() {
-  const value = useContext(AuthContext);
-  if (!value) {
-    throw new Error("useAuthStatus must be used within AuthGate");
-  }
-  return value;
 }
 
 export function AuthGate({ children }: Props) {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function refreshStatus() {
+  const refreshStatus = useCallback(async () => {
     try {
+      const nextStatus = await api.authStatus();
       setError(null);
-      setStatus(await api.authStatus());
+      setStatus(nextStatus);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to check auth");
     }
-  }
+  }, []);
 
   useEffect(() => {
-    void refreshStatus();
+    let active = true;
+
+    void api
+      .authStatus()
+      .then((nextStatus) => {
+        if (!active) return;
+        setError(null);
+        setStatus(nextStatus);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Unable to check auth");
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   if (error) {

@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { AppHarness } from "./fixtures/appHarness";
 
 const ORIGIN = "http://127.0.0.1:4173";
+const NOTIFICATION_SELECTOR = 'input[aria-label="Browser Notifications"]';
 
 const USER_STEP = {
   type: "CORTEX_STEP_TYPE_USER_INPUT",
@@ -71,6 +72,16 @@ async function installNotificationRecorder(
   })()`);
 }
 
+async function enableBrowserNotifications(
+  page: Awaited<ReturnType<AppHarness["newPage"]>>,
+) {
+  await page.waitFor(
+    `Boolean(document.querySelector(${JSON.stringify(NOTIFICATION_SELECTOR)}))`,
+    { timeoutMs: 10_000, description: "browser notification control to appear" },
+  );
+  await page.click(NOTIFICATION_SELECTOR);
+}
+
 async function makePageNeedAttention(
   page: Awaited<ReturnType<AppHarness["newPage"]>>,
 ) {
@@ -117,8 +128,7 @@ describe("browser notifications", () => {
 
     await page!.navigate(app.url("/porta/settings"));
     await installNotificationRecorder(page!);
-
-    await page!.click('input[aria-label="Browser Notifications"]');
+    await enableBrowserNotifications(page!);
 
     await page!.waitFor(
       `(() => {
@@ -144,7 +154,7 @@ describe("browser notifications", () => {
 
     await page!.navigate(app.url("/porta/settings"));
     await installNotificationRecorder(page!);
-    await page!.click('input[aria-label="Browser Notifications"]');
+    await enableBrowserNotifications(page!);
 
     await page!.navigate(app.url("/porta/conv-notify"));
     await installNotificationRecorder(page!);
@@ -177,7 +187,7 @@ describe("browser notifications", () => {
 
     await page!.navigate(app.url("/porta/settings"));
     await installNotificationRecorder(page!);
-    await page!.click('input[aria-label="Browser Notifications"]');
+    await enableBrowserNotifications(page!);
 
     await page!.navigate(app.url("/porta/conv-run"));
     await installNotificationRecorder(page!);
