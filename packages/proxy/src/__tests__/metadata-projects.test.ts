@@ -20,7 +20,16 @@ const {
   findProjectIdForWorkspaceUri,
   getProjectInfos,
   getProjectNameMap,
+  resolveProjectAssociation,
 } = await import("../metadata.js");
+
+const projectInfos = [
+  {
+    id: "project-a",
+    name: "Project A",
+    folderUris: ["file:///home/test/project-a/"],
+  },
+];
 
 describe("Antigravity project metadata", () => {
   beforeEach(() => {
@@ -92,6 +101,54 @@ describe("Antigravity project metadata", () => {
     await expect(findProjectIdForWorkspaceUri(workspaceUri)).resolves.toBe(
       expected,
     );
+  });
+
+  it("prefers an association already stored in conversation metadata", async () => {
+    await expect(
+      resolveProjectAssociation(
+        {
+          workspaceUri: "file:///home/test/other-workspace",
+          projectId: "project-a",
+        },
+        projectInfos,
+      ),
+    ).resolves.toEqual({
+      workspaceUri: "file:///home/test/other-workspace",
+      projectId: "project-a",
+      projectName: "Project A",
+      matched: true,
+      source: "metadata",
+    });
+  });
+
+  it("returns a folder-uri association for exact, trailing-slash, and child workspaces", async () => {
+    for (const workspaceUri of [
+      "file:///home/test/project-a",
+      "file:///home/test/project-a/",
+      "file:///home/test/project-a/packages/web",
+    ]) {
+      await expect(
+        resolveProjectAssociation({ workspaceUri }, projectInfos),
+      ).resolves.toEqual({
+        workspaceUri,
+        projectId: "project-a",
+        projectName: "Project A",
+        matched: true,
+        source: "folder-uri",
+      });
+    }
+  });
+
+  it("returns an explicit unmatched status without exposing project config", async () => {
+    await expect(
+      resolveProjectAssociation(
+        { workspaceUri: "file:///home/test/project-b" },
+        projectInfos,
+      ),
+    ).resolves.toEqual({
+      workspaceUri: "file:///home/test/project-b",
+      matched: false,
+    });
   });
 
   it("returns undefined when no project matches", async () => {

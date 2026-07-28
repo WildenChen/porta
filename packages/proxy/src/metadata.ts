@@ -53,9 +53,7 @@ export async function getMetadata(
 /** Scan disk for conversation files not loaded in memory */
 export async function scanDiskConversations(
   conversationsDirs: string | string[] = CONVERSATIONS_DIRS,
-): Promise<
-  { id: string; mtime: string }[]
-> {
+): Promise<{ id: string; mtime: string }[]> {
   const dirs = Array.isArray(conversationsDirs)
     ? conversationsDirs
     : [conversationsDirs];
@@ -164,9 +162,9 @@ export function getPrimaryWorkspaceUri(summary: unknown): string | undefined {
   return extractConversationWorkspaces(summary)[0]?.workspaceFolderAbsoluteUri;
 }
 
-export function withNormalizedConversationWorkspaces<T extends Record<string, unknown>>(
-  summary: T,
-): T {
+export function withNormalizedConversationWorkspaces<
+  T extends Record<string, unknown>,
+>(summary: T): T {
   if (Array.isArray(summary.workspaces) && summary.workspaces.length > 0) {
     return summary;
   }
@@ -188,6 +186,21 @@ export interface ProjectInfo {
   id: string;
   name: string;
   folderUris: string[];
+}
+
+export type ProjectAssociationSource = "metadata" | "folder-uri";
+
+export interface ProjectAssociation {
+  workspaceUri?: string;
+  projectId?: string;
+  projectName?: string;
+  matched: boolean;
+  source?: ProjectAssociationSource;
+}
+
+export interface ResolveProjectAssociationInput {
+  workspaceUri?: string;
+  projectId?: string;
 }
 
 export async function getProjectInfos(): Promise<ProjectInfo[]> {
@@ -230,11 +243,79 @@ export async function getProjectInfos(): Promise<ProjectInfo[]> {
   return projects;
 }
 
+function normalizeProjectWorkspaceUri(workspaceUri: string): string {
+  return workspaceUri.replace(/\/$/, "");
+}
+
+function findProjectForWorkspaceUri(
+  workspaceUri: string,
+  projects: ProjectInfo[],
+): ProjectInfo | undefined {
+  const normalizedTarget = normalizeProjectWorkspaceUri(workspaceUri);
+
+  for (const project of projects) {
+    for (const folderUri of project.folderUris) {
+      const normalizedFolder = normalizeProjectWorkspaceUri(folderUri);
+      if (
+        normalizedTarget === normalizedFolder ||
+        normalizedTarget.startsWith(normalizedFolder + "/")
+      ) {
+        return project;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolve the Antigravity project association used by conversation listing,
+ * conversation creation, and workspace status APIs.
+ *
+ * A projectId already stored in conversation metadata takes precedence over
+ * folder matching because it represents the association chosen when the
+ * conversation was created.
+ */
+export async function resolveProjectAssociation(
+  input: ResolveProjectAssociationInput,
+  projectInfos?: ProjectInfo[],
+): Promise<ProjectAssociation> {
+  const projects = projectInfos ?? (await getProjectInfos());
+
+  if (input.projectId) {
+    const project = projects.find((candidate) => candidate.id === input.projectId);
+    return {
+      ...(input.workspaceUri ? { workspaceUri: input.workspaceUri } : {}),
+      projectId: input.projectId,
+      ...(project?.name ? { projectName: project.name } : {}),
+      matched: true,
+      source: "metadata",
+    };
+  }
+
+  if (!input.workspaceUri) {
+    return { matched: false };
+  }
+
+  const project = findProjectForWorkspaceUri(input.workspaceUri, projects);
+  if (!project) {
+    return { workspaceUri: input.workspaceUri, matched: false };
+  }
+
+  return {
+    workspaceUri: input.workspaceUri,
+    projectId: project.id,
+    projectName: project.name,
+    matched: true,
+    source: "folder-uri",
+  };
+}
+
 export async function getProjectNameMap(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const projects = await getProjectInfos();
-  for (const proj of projects) {
-    map.set(proj.id, proj.name);
+  for (const project of projects) {
+    map.set(project.id, project.name);
   }
   return map;
 }
@@ -242,21 +323,5 @@ export async function getProjectNameMap(): Promise<Map<string, string>> {
 export async function findProjectIdForWorkspaceUri(
   workspaceUri: string | undefined,
 ): Promise<string | undefined> {
-  if (!workspaceUri) return undefined;
-  const normalizedTarget = workspaceUri.replace(/\/$/, "");
-  const projects = await getProjectInfos();
-
-  for (const project of projects) {
-    for (const folderUri of project.folderUris) {
-      const normalizedFolder = folderUri.replace(/\/$/, "");
-      if (
-        normalizedTarget === normalizedFolder ||
-        normalizedTarget.startsWith(normalizedFolder + "/")
-      ) {
-        return project.id;
-      }
-    }
-  }
-  return undefined;
+  return (await resolveProjectAssociation({ workspaceUri })).projectId;
 }
-
