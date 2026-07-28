@@ -311,9 +311,11 @@ export async function resolveProjectAssociation(
   };
 }
 
-export async function getProjectNameMap(): Promise<Map<string, string>> {
+export async function getProjectNameMap(
+  projectInfos?: ProjectInfo[],
+): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const projects = await getProjectInfos();
+  const projects = projectInfos ?? (await getProjectInfos());
   for (const project of projects) {
     map.set(project.id, project.name);
   }
@@ -322,6 +324,7 @@ export async function getProjectNameMap(): Promise<Map<string, string>> {
 
 export async function findProjectIdForWorkspaceUri(
   workspaceUri: string | undefined,
+  projectInfos?: ProjectInfo[],
 ): Promise<string | undefined> {
-  return (await resolveProjectAssociation({ workspaceUri })).projectId;
+  return (await resolveProjectAssociation({ workspaceUri }, projectInfos)).projectId;
 }
