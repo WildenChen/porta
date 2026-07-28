@@ -2,14 +2,14 @@
 
 [![CI](https://github.com/WildenChen/porta/actions/workflows/ci.yml/badge.svg)](https://github.com/WildenChen/porta/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-0.13.0%2Bwilden.04-green)
+![Version](https://img.shields.io/badge/version-0.13.0%2Bwilden.05-green)
 
 Remote web interface for [Antigravity](https://antigravity.google/) Agent Manager.
 Access your local Antigravity sessions from your phone, tablet, or any remote browser through a lightweight LSP bridge.
 
-Current Wilden build: **0.13.0+wilden.04**. Based on upstream **0.13.0**.
+Current Wilden build: **0.13.0+wilden.05**. Based on upstream **0.13.0**.
 
-Porta is a two-part system: a **proxy** that bridges your local Antigravity Language Server to the network, and a **web UI** (installable PWA) that gives you a mobile-friendly chat interface.
+Porta is a two-part system: a **proxy** that discovers and routes across local Antigravity Language Server instances, and a **web UI** (installable PWA) that gives you a mobile-friendly chat interface.
 
 <p align="center">
   <img src="docs/screenshot.png" alt="Porta — desktop and mobile" width="720">
@@ -132,12 +132,25 @@ Wildcard binds (`0.0.0.0`, `::`) are rejected by default and require `PORTA_ALLO
 When exposing the web UI beyond localhost, enable Password mode from Settings
 and serve Porta through HTTPS or a trusted authenticated reverse proxy.
 
+### Project association
+
+Before a new conversation is created, Porta shows the Antigravity project
+associated with the selected workspace. A workspace without a match remains
+selectable, but Porta displays a non-blocking warning that the conversation may
+appear under **Outside of Project**. Use **Refresh project metadata** after
+changing Antigravity project folders or names.
+
+Porta uses project metadata stored on the trajectory when available. For legacy
+or disk-only conversations that do not yet expose that metadata, the displayed
+association may be derived from the current workspace-to-project mapping until
+Antigravity reloads the full conversation metadata.
+
 ### Version convention
 
 This fork tracks the upstream release plus a local build suffix:
 
 - Upstream base: `0.13.0`
-- Wilden build: `0.13.0+wilden.04`
+- Wilden build: `0.13.0+wilden.05`
 
 The root `package.json` version is the release source of truth. The web build
 injects that version, derives the upstream base from the part before `+`, and
@@ -179,8 +192,9 @@ constraints are inherent to its LSP-bridge architecture:
   a feature, Porta can't offer it either.
 - **No code editing or terminal**: Porta relays conversation-level
   data only. Use your local editor or SSH for file operations.
-- **Single user**: The proxy connects to one local Antigravity
-  Language Server. There is no multi-user or multi-tenant model.
+- **Single administrator**: Porta can discover multiple workspace-scoped or hub
+  Language Server instances on the same Antigravity installation, but it has no
+  multi-user, multi-account, or multi-tenant model.
 
 ### Platform support
 
@@ -214,7 +228,7 @@ flowchart LR
 
   subgraph Local ["Your machine"]
     Proxy["Proxy(:3170)"]
-    LS["Antigravity LS"]
+    LS["Antigravity LS instance(s)"]
   end
 
   Browser -- HTTPS --> Pages --> ZT --> Tunnel --> Proxy --> LS
