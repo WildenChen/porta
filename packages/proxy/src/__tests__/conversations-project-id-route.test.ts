@@ -5,12 +5,16 @@ import type { LSInstance } from "../discovery.js";
 const {
   mockFindProjectIdForWorkspaceUri,
   mockGetInstances,
+  mockGetStepCount,
   mockRpcCall,
+  mockRpcForConversation,
   mockScanDiskConversations,
 } = vi.hoisted(() => ({
   mockFindProjectIdForWorkspaceUri: vi.fn(),
   mockGetInstances: vi.fn<() => Promise<LSInstance[]>>(),
+  mockGetStepCount: vi.fn(),
   mockRpcCall: vi.fn(),
+  mockRpcForConversation: vi.fn(),
   mockScanDiskConversations: vi.fn(),
 }));
 
@@ -26,6 +30,8 @@ vi.mock("../routing.js", async (importOriginal) => {
       getInstance: async () => (await mockGetInstances())[0] ?? null,
     },
     rpc: { call: mockRpcCall },
+    rpcForConversation: mockRpcForConversation,
+    getStepCount: mockGetStepCount,
     conversationAffinity,
     conversationInstanceAffinity,
   };
