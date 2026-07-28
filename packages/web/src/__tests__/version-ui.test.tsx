@@ -25,7 +25,7 @@ vi.mock("../api/client", () => ({
 
 describe("build version UI", () => {
   it("derives version metadata from build-time values", () => {
-    expect(PORTA_VERSION).toBe("0.13.0+wilden.03");
+    expect(PORTA_VERSION).toMatch(/^0\.13\.0\+wilden\.\d+$/);
     expect(PORTA_UPSTREAM_VERSION).toBe("0.13.0");
     expect(PORTA_GIT_SHA).toMatch(/^[a-f0-9]{7,}|unknown$/);
   });
@@ -34,7 +34,7 @@ describe("build version UI", () => {
     render(<LoginPage onAuthenticated={() => {}} />);
 
     expect(screen.getByRole("heading", { name: "Porta" })).toBeInTheDocument();
-    expect(screen.getByText("0.13.0+wilden.03")).toBeInTheDocument();
+    expect(screen.getByText(PORTA_VERSION)).toBeInTheDocument();
   });
 
   it("shows version, upstream base, and commit in settings", async () => {
@@ -53,9 +53,9 @@ describe("build version UI", () => {
 
     expect(screen.getByRole("heading", { name: "About" })).toBeInTheDocument();
     expect(screen.getByText("Version")).toBeInTheDocument();
-    expect(await screen.findByText("0.13.0+wilden.03")).toBeInTheDocument();
+    expect(await screen.findByText(PORTA_VERSION)).toBeInTheDocument();
     expect(screen.getByText("Based on upstream")).toBeInTheDocument();
-    expect(screen.getByText("0.13.0")).toBeInTheDocument();
+    expect(screen.getByText(PORTA_UPSTREAM_VERSION)).toBeInTheDocument();
     expect(screen.getByText("Commit")).toBeInTheDocument();
   });
 });
