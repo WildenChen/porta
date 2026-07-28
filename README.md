@@ -2,12 +2,12 @@
 
 [![CI](https://github.com/WildenChen/porta/actions/workflows/ci.yml/badge.svg)](https://github.com/WildenChen/porta/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-0.13.0%2Bwilden.04-green)
+![Version](https://img.shields.io/badge/version-0.13.0%2Bwilden.05-green)
 
 Remote web interface for [Antigravity](https://antigravity.google/) Agent Manager.
 Access your local Antigravity sessions from your phone, tablet, or any remote browser through a lightweight LSP bridge.
 
-Current Wilden build: **0.13.0+wilden.04**. Based on upstream **0.13.0**.
+Current Wilden build: **0.13.0+wilden.05**. Based on upstream **0.13.0**.
 
 Porta is a two-part system: a **proxy** that bridges your local Antigravity Language Server to the network, and a **web UI** (installable PWA) that gives you a mobile-friendly chat interface.
 
@@ -137,7 +137,7 @@ and serve Porta through HTTPS or a trusted authenticated reverse proxy.
 This fork tracks the upstream release plus a local build suffix:
 
 - Upstream base: `0.13.0`
-- Wilden build: `0.13.0+wilden.04`
+- Wilden build: `0.13.0+wilden.05`
 
 The root `package.json` version is the release source of truth. The web build
 injects that version, derives the upstream base from the part before `+`, and
@@ -314,43 +314,50 @@ Porta's built-in Edge Proxy securely bridges the two by injecting Machine-to-Mac
 To set this up, follow these precise steps:
 
 **1. Create Two Separate Applications**
-In your **Cloudflare Zero Trust** dashboard, under **Access > Applications**, you must create **two** distinct applications:
 - **Frontend App**: Protects your Pages deployment (e.g., `https://<YOUR_PAGES_DOMAIN>`). Configure this with standard user login policies (e.g., email OTP).
 - **Backend API App**: Protects your Tunnel (e.g., `https://<YOUR_API_SUBDOMAIN>`). 
 
-**2. Generate Service Tokens**
-1. Navigate to **Access > Service Auth**.
-2. Create a new Service Token for Porta. This will generate a **Client ID** and **Client Secret**.
+**2. Generate a Service Token**
+In **Access > Service Auth**, create a new Service Token (e.g., "Porta Pages Bridge"). Copy its `Client ID` and `Client Secret`.
 
-**3. Add the Service Auth Policy to the Backend API**
-1. Open the **Backend API App** you created in Step 1.
-2. Go to the **Policies** tab and add a new policy.
-3. Set the action to **Service Auth**.
-4. In the rules, configure it to **Include > Service Token** and select the token you just created.
+**3. Configure Backend Policy**
+For the Backend API App, add a policy with:
+- **Action**: `Service Auth`
+- **Include**: `Service Token` -> select the token created above.
 
-**4. Configure Cloudflare Pages Environment Variables**
-1. Go to your **Cloudflare Pages** dashboard for `<YOUR_PROJECT_NAME>`.
-2. Under **Settings > Environment variables**, add the following **three** variables to **both Production and Preview** environments:
-   - `PORTA_API_BASE`: Set this to your exact API URL (e.g., `https://<YOUR_API_SUBDOMAIN>`).
-   - `CF_ACCESS_CLIENT_ID`: The Client ID from Step 2.
-   - `CF_ACCESS_CLIENT_SECRET`: The Client Secret from Step 2.
+**4. Set Environment Variables in Cloudflare Pages**
+In your Pages project **Settings > Environment Variables**, add the following secrets for both Production and Preview environments:
+- `CF_ACCESS_CLIENT_ID`: The Client ID of the service token.
+- `CF_ACCESS_CLIENT_SECRET`: The Client Secret of the service token.
+- `PORTA_API_ORIGIN`: The full URL of your backend Tunnel (e.g., `https://api-porta.example.com`).
 
-**5. Route Frontend Traffic Through the Proxy**
-By default, the Porta frontend tries to fetch the API directly. To force it to use the secure Edge Proxy:
-1. In your `.env.production` file, **remove or comment out** `VITE_API_BASE`. 
-2. Without `VITE_API_BASE`, the frontend falls back to root-relative API paths (`/api/*`), routing traffic through the Cloudflare Pages Edge proxy. `PORTA_BASE_PATH` only changes the frontend asset, router, and PWA paths.
-3. Run `pnpm deploy` again.
+**5. Deploy the Pages Function**
+The repository includes a `functions/api/[[path]].ts` Cloudflare Pages Function that acts as a secure reverse proxy. When you run `pnpm deploy`, it automatically gets deployed.
+The frontend will automatically send all API requests to `/api/...` on its own domain. The Pages Function intercepts these requests, injects the service token headers, and forwards them to your backend Tunnel.
+This architecture ensures your credentials are never exposed to the browser.
 
-> **Backwards Compatibility Note:** If `VITE_API_BASE` is defined, the frontend will bypass the proxy entirely and attempt to communicate directly with the backend. This is fully supported and recommended for local development (LAN access) or deployments where the backend is not protected by Cloudflare Access. Additionally, the proxy will gracefully skip Service Token injection if the `CF_ACCESS_CLIENT_ID` environment variables are missing.
+## Tailscale
 
-## Contributing
+For private access without exposing Porta publicly, you can also use Tailscale.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development workflow, branch
-strategy, and PR guidelines.
+```bash
+pnpm dev:tailscale
+```
 
-## Security
+This starts the proxy on your configured Tailscale address and keeps the web UI
+available through the same private network path.
 
-To report a vulnerability, see [SECURITY.md](SECURITY.md).
+## Development
+
+```bash
+pnpm install
+pnpm dev
+pnpm build
+pnpm test
+pnpm test:e2e
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for branch and pull-request conventions.
 
 ## License
 
