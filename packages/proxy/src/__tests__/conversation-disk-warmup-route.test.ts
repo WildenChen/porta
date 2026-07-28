@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LSInstance } from "../discovery.js";
+import type { ProjectInfo } from "../metadata.js";
 
 const {
   mockFindProjectIdForWorkspaceUri,
   mockGetInstances,
+  mockGetProjectInfos,
   mockGetProjectNameMap,
   mockGetStepCount,
   mockRpcCall,
@@ -13,6 +15,7 @@ const {
 } = vi.hoisted(() => ({
   mockFindProjectIdForWorkspaceUri: vi.fn(),
   mockGetInstances: vi.fn<() => Promise<LSInstance[]>>(),
+  mockGetProjectInfos: vi.fn(),
   mockGetProjectNameMap: vi.fn(),
   mockGetStepCount: vi.fn(),
   mockRpcCall: vi.fn(),
@@ -44,6 +47,7 @@ vi.mock("../metadata.js", async (importOriginal) => {
   return {
     ...actual,
     findProjectIdForWorkspaceUri: mockFindProjectIdForWorkspaceUri,
+    getProjectInfos: mockGetProjectInfos,
     getProjectNameMap: mockGetProjectNameMap,
     scanDiskConversations: mockScanDiskConversations,
   };
@@ -81,12 +85,23 @@ async function waitForWarmUpCalls(expected: number) {
   });
 }
 
+const defaultProjectInfos: ProjectInfo[] = [
+  {
+    id: "project-a",
+    name: "Project A",
+    folderUris: ["file:///work/project-a"],
+  },
+];
+
 describe("GET /api/conversations disk warm-up", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     conversationAffinity.clear();
     conversationInstanceAffinity.clear();
-    mockGetProjectNameMap.mockResolvedValue(new Map());
+    mockGetProjectInfos.mockResolvedValue(defaultProjectInfos);
+    mockGetProjectNameMap.mockImplementation(async (projectInfos: ProjectInfo[]) =>
+      new Map(projectInfos.map((project) => [project.id, project.name])),
+    );
     mockFindProjectIdForWorkspaceUri.mockResolvedValue(undefined);
     mockScanDiskConversations.mockResolvedValue([]);
     mockGetInstances.mockResolvedValue([instance(1)]);
@@ -105,6 +120,54 @@ describe("GET /api/conversations disk warm-up", () => {
     vi.restoreAllMocks();
   });
 
+  it("reuses one project metadata snapshot for all summaries in a listing", async () => {
+    mockRpcCall.mockImplementation(async (method: string) => {
+      if (method === "GetAllCascadeTrajectories") {
+        return {
+          trajectorySummaries: {
+            "conversation-a": {
+              summary: "A",
+              stepCount: 1,
+              workspaces: [
+                { workspaceFolderAbsoluteUri: "file:///work/project-a/a" },
+              ],
+            },
+            "conversation-b": {
+              summary: "B",
+              stepCount: 1,
+              workspaces: [
+                { workspaceFolderAbsoluteUri: "file:///work/project-a/b" },
+              ],
+            },
+          },
+        };
+      }
+      throw new Error(`unexpected RPC: ${method}`);
+    });
+    mockFindProjectIdForWorkspaceUri.mockImplementation(
+      async (_workspaceUri: string, projectInfos: ProjectInfo[]) => {
+        expect(projectInfos).toBe(defaultProjectInfos);
+        return "project-a";
+      },
+    );
+
+    const response = await app().request("/api/conversations");
+    const body = (await response.json()) as {
+      trajectorySummaries: Record<string, { projectName?: string }>;
+    };
+
+    expect(response.status).toBe(200);
+    expect(mockGetProjectInfos).toHaveBeenCalledTimes(1);
+    expect(mockGetProjectNameMap).toHaveBeenCalledWith(defaultProjectInfos);
+    expect(mockFindProjectIdForWorkspaceUri).toHaveBeenCalledTimes(2);
+    expect(body.trajectorySummaries["conversation-a"].projectName).toBe(
+      "Project A",
+    );
+    expect(body.trajectorySummaries["conversation-b"].projectName).toBe(
+      "Project A",
+    );
+  });
+
   it("does not repeat warm-up within the TTL and retries after expiry", async () => {
     let now = 1_000_000;
     vi.spyOn(Date, "now").mockImplementation(() => now);
@@ -120,6 +183,44 @@ describe("GET /api/conversations disk warm-up", () => {
     expect(warmUpCalls()).toHaveLength(1);
 
     now += 60_001;
+    expect((await app().request("/api/conversations")).status).toBe(200);
+    await waitForWarmUpCalls(2);
+  });
+
+  it("removes a warm-up entry after the conversation is loaded", async () => {
+    let loaded = false;
+    mockScanDiskConversations.mockResolvedValue([
+      { id: "loaded-cache-conversation", mtime: "2026-07-28T00:00:00.000Z" },
+    ]);
+    mockRpcCall.mockImplementation(async (method: string) => {
+      if (method === "GetAllCascadeTrajectories") {
+        return {
+          trajectorySummaries: loaded
+            ? {
+                "loaded-cache-conversation": {
+                  summary: "Loaded",
+                  stepCount: 1,
+                  lastModifiedTime: "2026-07-28T00:00:00.000Z",
+                },
+              }
+            : {},
+        };
+      }
+      if (method === "GetCascadeTrajectorySteps") {
+        return { steps: [] };
+      }
+      throw new Error(`unexpected RPC: ${method}`);
+    });
+
+    expect((await app().request("/api/conversations")).status).toBe(200);
+    await waitForWarmUpCalls(1);
+
+    loaded = true;
+    expect((await app().request("/api/conversations")).status).toBe(200);
+    await Promise.resolve();
+    expect(warmUpCalls()).toHaveLength(1);
+
+    loaded = false;
     expect((await app().request("/api/conversations")).status).toBe(200);
     await waitForWarmUpCalls(2);
   });
