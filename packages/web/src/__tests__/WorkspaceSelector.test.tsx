@@ -85,7 +85,7 @@ describe("WorkspaceSelector", () => {
     expect(screen.getByText("Outside of Project")).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: /porta Porta Project/i }),
+      screen.getByRole("button", { name: /porta.*Porta Project/i }),
     );
     expect(onSelect).toHaveBeenCalledWith(matchedWorkspace.uri);
   });
