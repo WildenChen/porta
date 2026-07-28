@@ -330,7 +330,7 @@ describe("auth provider", () => {
     await writeFile(join(dataDir, "auth.json"), "{not-json", { mode: 0o600 });
 
     expect(() => createAuthProvider({}, { dataDir })).toThrow(
-      `Invalid JSON in Porta auth runtime config at ${join(dataDir, "auth.json")}.",
+      `Invalid JSON in Porta auth runtime config at ${join(dataDir, "auth.json")}.`,
     );
   });
 
