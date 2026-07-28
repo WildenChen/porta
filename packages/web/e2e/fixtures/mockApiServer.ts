@@ -153,6 +153,28 @@ export class MockApiServer {
     const pathname = url.pathname;
 
     try {
+      if (method === "GET" && pathname === "/api/auth/status") {
+        sendJson(res, 200, {
+          mode: "disabled",
+          enabled: false,
+          authenticated: true,
+          configured: true,
+        });
+        return;
+      }
+
+      if (method === "GET" && pathname === "/api/auth/settings") {
+        sendJson(res, 200, {
+          mode: "disabled",
+          sessionDuration: { seconds: 604800, label: "7 days" },
+          configured: true,
+          status: "Disabled",
+          passwordPolicy: { minLength: 8 },
+          canEnablePassword: true,
+        });
+        return;
+      }
+
       if (method === "GET" && pathname === "/api/health") {
         sendJson(res, 200, {
           status: "ok",
@@ -175,6 +197,12 @@ export class MockApiServer {
             {
               workspaceUri: this.workspaceUri,
               gitRootUri: this.workspaceUri,
+              projectAssociation: {
+                matched: true,
+                projectId: "mock-porta-project",
+                projectName: "Porta",
+                source: "folder-uri",
+              },
             },
           ],
         });
@@ -316,7 +344,9 @@ export class MockApiServer {
         return;
       }
 
-      const mutationMatch = pathname.match(/^\/api\/conversations\/([^/]+)\/(stop|revert|file-permission|command-action)$/);
+      const mutationMatch = pathname.match(
+        /^\/api\/conversations\/([^/]+)\/(stop|revert|file-permission|command-action)$/,
+      );
       if (method === "POST" && mutationMatch) {
         sendJson(res, 200, {});
         return;
