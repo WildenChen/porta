@@ -5,7 +5,11 @@
 import type { Hono } from "hono";
 import { discovery, rpc } from "../routing.js";
 import { handleRPCError } from "../errors.js";
-import { extractConversationWorkspaces } from "../metadata.js";
+import {
+  extractConversationWorkspaces,
+  getProjectInfos,
+  resolveProjectAssociation,
+} from "../metadata.js";
 
 export function registerWorkspaceRoutes(app: Hono): void {
   app.get("/api/workspaces", async (c) => {
@@ -61,10 +65,34 @@ export function registerWorkspaceRoutes(app: Hono): void {
         }),
       );
 
+      const projectInfos = await getProjectInfos();
+      const workspaceInfos = await Promise.all(
+        Array.from(workspaceMap.values()).map(async (workspace) => {
+          const association = await resolveProjectAssociation(
+            { workspaceUri: workspace.workspaceUri },
+            projectInfos,
+          );
+
+          return {
+            ...workspace,
+            projectAssociation: {
+              matched: association.matched,
+              ...(association.projectId
+                ? { projectId: association.projectId }
+                : {}),
+              ...(association.projectName
+                ? { projectName: association.projectName }
+                : {}),
+              ...(association.source ? { source: association.source } : {}),
+            },
+          };
+        }),
+      );
+
       return c.json({
         homeDirPath,
         homeDirUri,
-        workspaceInfos: Array.from(workspaceMap.values()),
+        workspaceInfos,
       });
     } catch (err) {
       return handleRPCError(c, err);
