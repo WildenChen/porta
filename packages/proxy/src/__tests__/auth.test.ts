@@ -101,7 +101,11 @@ describe("auth provider", () => {
     expect(JSON.stringify(config)).not.toContain("new-password");
     expect(config.passwordVerifier).toMatchObject({ algorithm: "scrypt" });
     expect(config.sessionSecret).toEqual(expect.any(String));
-    expect(configStat.mode & 0o777).toBe(0o600);
+    if (process.platform === "win32") {
+      expect(configStat.isFile()).toBe(true);
+    } else {
+      expect(configStat.mode & 0o777).toBe(0o600);
+    }
   });
 
   it("rejects untrusted remote first-time password setup", async () => {
