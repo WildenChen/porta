@@ -4,6 +4,7 @@
 @import "./styles/chat.css";
 @import "./styles/input.css";
 @import "./styles/workspace.css";
+@import "./styles/project-association.css";
 @import "./styles/chat-states.css";
 @import "./styles/step-cards.css";
 @import "./styles/overlays.css";
