@@ -82,7 +82,6 @@ describe("POST /api/conversations project association", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         workspaceFolderAbsoluteUri: "file:///home/user/projectA",
-        trajectoryMetadata: { source: "porta" },
       }),
     });
 
@@ -95,7 +94,6 @@ describe("POST /api/conversations project association", () => {
       expect.objectContaining({
         projectId: "project-a",
         trajectoryMetadata: {
-          source: "porta",
           projectId: "project-a",
         },
       }),
