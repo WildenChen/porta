@@ -1,13 +1,15 @@
 /**
  * Language Server Discovery
  *
- * Finds running Antigravity Language Server instances by:
+ * Finds running Antigravity.app Language Server instances by:
  * 1. Reading daemon discovery files (~/.gemini/antigravity/daemon/ls_*.json)
  * 2. Scanning OS processes for language_server executables
  * 3. Merging results from both sources (deduped by PID)
  * 4. Enriching instances with workspaceId via GetWorkspaceInfos RPC
  *
- * Each LS instance is workspace-scoped, so there may be multiple.
+ * Antigravity IDE.app uses a separate app-data tree and is excluded by default
+ * so its conversations cannot leak into Porta. Set
+ * PORTA_INCLUDE_ANTIGRAVITY_IDE=1 to opt in.
  */
 
 import { readdir, readFile } from "node:fs/promises";
@@ -34,22 +36,43 @@ export interface LSInstance {
   source: "daemon" | "process";
 }
 
-const DAEMON_DIRS = [
-  {
-    dir: join(homedir(), ".gemini", "antigravity", "daemon"),
-    appDataDir: "antigravity",
-  },
-  {
-    dir: join(homedir(), ".gemini", "antigravity-ide", "daemon"),
-    appDataDir: "antigravity-ide",
-  },
-];
+const ANTIGRAVITY_DAEMON_DIR = {
+  dir: join(homedir(), ".gemini", "antigravity", "daemon"),
+  appDataDir: "antigravity",
+};
+const ANTIGRAVITY_IDE_DAEMON_DIR = {
+  dir: join(homedir(), ".gemini", "antigravity-ide", "daemon"),
+  appDataDir: "antigravity-ide",
+};
+
+export function includeAntigravityIde(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.PORTA_INCLUDE_ANTIGRAVITY_IDE === "1";
+}
+
+export function isAllowedAppDataDir(
+  appDataDir: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (!appDataDir || appDataDir === "antigravity") return true;
+  return appDataDir === "antigravity-ide" && includeAntigravityIde(env);
+}
+
+function daemonDirs(env: NodeJS.ProcessEnv) {
+  return [
+    ANTIGRAVITY_DAEMON_DIR,
+    ...(includeAntigravityIde(env) ? [ANTIGRAVITY_IDE_DAEMON_DIR] : []),
+  ];
+}
 const SERVICE_PREFIX = "exa.language_server_pb.LanguageServerService";
 
-async function discoverFromDaemon(): Promise<LSInstance[]> {
+async function discoverFromDaemon(
+  env: NodeJS.ProcessEnv,
+): Promise<LSInstance[]> {
   const instances: LSInstance[] = [];
 
-  for (const { dir: daemonDir, appDataDir } of DAEMON_DIRS) {
+  for (const { dir: daemonDir, appDataDir } of daemonDirs(env)) {
     try {
       const files = await readdir(daemonDir);
       const lsFiles = files.filter(
@@ -85,7 +108,9 @@ async function discoverFromDaemon(): Promise<LSInstance[]> {
   return instances;
 }
 
-async function discoverFromProcess(): Promise<LSInstance[]> {
+async function discoverFromProcess(
+  env: NodeJS.ProcessEnv,
+): Promise<LSInstance[]> {
   const instances: LSInstance[] = [];
 
   try {
@@ -101,6 +126,7 @@ async function discoverFromProcess(): Promise<LSInstance[]> {
     }> = [];
 
     for (const candidate of candidates) {
+      if (!isAllowedAppDataDir(candidate.appDataDir, env)) continue;
       if (!(await platformAdapter.isPidAlive(candidate.pid))) continue;
 
       if (candidate.httpsPort) {
@@ -358,9 +384,11 @@ async function enrichReachableInstances(
  * 2. Process discovery
  * 3. RPC enrichment
  */
-export async function discoverInstances(): Promise<LSInstance[]> {
-  const daemonInstances = await discoverFromDaemon();
-  const processInstances = await discoverFromProcess();
+export async function discoverInstances(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<LSInstance[]> {
+  const daemonInstances = await discoverFromDaemon(env);
+  const processInstances = await discoverFromProcess(env);
 
   const instanceMap = new Map<number, LSInstance>();
 

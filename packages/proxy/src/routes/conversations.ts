@@ -39,6 +39,46 @@ import { conversationSignals } from "../signals.js";
 
 const MAX_STEPS_LIMIT = 500;
 const MAX_TOTAL_CONVERSATIONS = 100;
+const SUMMARY_GRACE_MS = 5 * 60_000;
+
+interface CachedConversationSummary {
+  summary: Record<string, unknown>;
+  lastSeenAt: number;
+}
+
+const lastKnownSummaries = new Map<string, CachedConversationSummary>();
+
+export function clearConversationSummaryCache(): void {
+  lastKnownSummaries.clear();
+}
+
+function rememberConversationSummary(
+  id: string,
+  summary: Record<string, unknown>,
+  now: number,
+): void {
+  lastKnownSummaries.set(id, { summary: { ...summary }, lastSeenAt: now });
+}
+
+function pruneConversationSummaryCache(now: number): void {
+  for (const [id, cached] of lastKnownSummaries) {
+    if (now - cached.lastSeenAt > SUMMARY_GRACE_MS) {
+      lastKnownSummaries.delete(id);
+    }
+  }
+}
+
+function unloadedCachedSummary(
+  cached: CachedConversationSummary,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...cached.summary,
+    status: "CASCADE_RUN_STATUS_UNLOADED",
+    ...extra,
+    _stale: true,
+  };
+}
 
 interface ConversationCandidate {
   id: string;
@@ -204,6 +244,9 @@ export function registerConversationRoutes(app: Hono): void {
       const projectNameMap = await getProjectNameMap(projectInfos);
       const instances = await discovery.getInstances();
       const merged: Record<string, Record<string, unknown>> = {};
+      let successfulListings = 0;
+      const now = Date.now();
+      pruneConversationSummaryCache(now);
 
       // Build normalized set of workspaceIds served by running LS instances.
       // Normalization handles format differences between CLI --workspace_id
@@ -221,6 +264,7 @@ export function registerConversationRoutes(app: Hono): void {
             const data = await rpc.call<{
               trajectorySummaries: Record<string, Record<string, unknown>>;
             }>("GetAllCascadeTrajectories", {}, inst);
+            successfulListings++;
             const summaries = data.trajectorySummaries ?? {};
             for (const [id, summary] of Object.entries(summaries)) {
               const normalizedSummary =
@@ -281,6 +325,7 @@ export function registerConversationRoutes(app: Hono): void {
       // Update affinity cache from merged results
       for (const [id, summary] of Object.entries(merged)) {
         warmedAt.delete(id);
+        rememberConversationSummary(id, summary, now);
         const wsUri = getPrimaryWorkspaceUri(summary);
         if (wsUri) {
           conversationAffinity.set(id, uriToWorkspaceId(wsUri));
@@ -304,6 +349,7 @@ export function registerConversationRoutes(app: Hono): void {
 
       // Rank LS and disk-only conversations together before applying the cap.
       const candidates: ConversationCandidate[] = [];
+      const candidateIds = new Set<string>();
 
       for (const [id, summary] of Object.entries(merged)) {
         candidates.push({
@@ -311,10 +357,15 @@ export function registerConversationRoutes(app: Hono): void {
           modifiedAt: parseConversationTime(summary.lastModifiedTime),
           summary,
         });
+        candidateIds.add(id);
       }
 
       for (const diskId of diskIds) {
         if (!merged[diskId.id]) {
+          const cached = lastKnownSummaries.get(diskId.id);
+          const cachedWorkspaces = cached
+            ? extractConversationWorkspaces(cached.summary)
+            : [];
           let injectedWorkspaces: { workspaceFolderAbsoluteUri: string }[] = [];
           const wsId = conversationAffinity.get(diskId.id);
           if (wsId && wsId.startsWith("file_")) {
@@ -324,18 +375,49 @@ export function registerConversationRoutes(app: Hono): void {
 
           candidates.push({
             id: diskId.id,
-            modifiedAt: parseConversationTime(diskId.mtime),
-            summary: {
-              summary: diskId.id.slice(0, 8) + "…",
-              stepCount: 0,
-              status: "CASCADE_RUN_STATUS_UNLOADED",
-              lastModifiedTime: diskId.mtime,
-              createdTime: diskId.mtime,
-              trajectoryId: "",
-              workspaces: injectedWorkspaces,
-              _diskOnly: true,
-            },
+            modifiedAt: Math.max(
+              parseConversationTime(diskId.mtime),
+              parseConversationTime(cached?.summary.lastModifiedTime),
+            ),
+            summary: cached
+              ? unloadedCachedSummary(cached, {
+                  workspaces:
+                    cachedWorkspaces.length > 0
+                      ? cachedWorkspaces
+                      : injectedWorkspaces,
+                  _diskOnly: true,
+                })
+              : {
+                  summary: diskId.id.slice(0, 8) + "…",
+                  stepCount: 0,
+                  status: "CASCADE_RUN_STATUS_UNLOADED",
+                  lastModifiedTime: diskId.mtime,
+                  createdTime: diskId.mtime,
+                  trajectoryId: "",
+                  workspaces: injectedWorkspaces,
+                  _diskOnly: true,
+                },
           });
+          candidateIds.add(diskId.id);
+        }
+      }
+
+      // A transient LS discovery or listing failure must not make a previously
+      // visible conversation disappear on the next poll. Keep a bounded,
+      // in-memory last-known-good snapshot until every discovered LS has
+      // returned a healthy listing again or the grace period expires.
+      const listingDegraded =
+        instances.length === 0 || successfulListings < instances.length;
+      if (listingDegraded) {
+        for (const [id, cached] of lastKnownSummaries) {
+          if (candidateIds.has(id)) continue;
+          const summary = unloadedCachedSummary(cached);
+          candidates.push({
+            id,
+            modifiedAt: parseConversationTime(summary.lastModifiedTime),
+            summary,
+          });
+          candidateIds.add(id);
         }
       }
 
@@ -697,6 +779,7 @@ export function registerConversationRoutes(app: Hono): void {
           cascadeId: id,
         });
         warmedAt.delete(id);
+        lastKnownSummaries.delete(id);
         messageTracker.clearConversation(id);
         return c.json(data);
       });

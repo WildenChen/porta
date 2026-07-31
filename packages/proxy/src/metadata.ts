@@ -17,12 +17,14 @@ export interface ConversationWorkspaceMetadata {
 }
 
 const KNOWN_APP_DATA_DIRS = ["antigravity", "antigravity-ide"] as const;
+const DEFAULT_APP_DATA_DIRS = ["antigravity"] as const;
 
 function conversationDirForAppDataDir(appDataDir: string): string {
   return join(homedir(), ".gemini", appDataDir, "conversations");
 }
 
-const CONVERSATIONS_DIRS = KNOWN_APP_DATA_DIRS.map(conversationDirForAppDataDir);
+const DEFAULT_CONVERSATIONS_DIRS =
+  DEFAULT_APP_DATA_DIRS.map(conversationDirForAppDataDir);
 
 const CONVERSATION_EXTENSIONS = [".pb", ".db"] as const;
 
@@ -52,7 +54,7 @@ export async function getMetadata(
 
 /** Scan disk for conversation files not loaded in memory */
 export async function scanDiskConversations(
-  conversationsDirs: string | string[] = CONVERSATIONS_DIRS,
+  conversationsDirs: string | string[] = DEFAULT_CONVERSATIONS_DIRS,
 ): Promise<{ id: string; mtime: string }[]> {
   const dirs = Array.isArray(conversationsDirs)
     ? conversationsDirs
@@ -186,6 +188,12 @@ export interface ProjectInfo {
   id: string;
   name: string;
   folderUris: string[];
+  /**
+   * Higher values identify richer Antigravity project records. Headless/new
+   * clients can leave duplicate minimal records for the same folder, so folder
+   * matching must not depend on readdir order.
+   */
+  selectionPriority?: number;
 }
 
 export type ProjectAssociationSource = "metadata" | "folder-uri";
@@ -201,6 +209,34 @@ export interface ProjectAssociation {
 export interface ResolveProjectAssociationInput {
   workspaceUri?: string;
   projectId?: string;
+}
+
+function projectSelectionPriority(data: Record<string, unknown>): number {
+  const resources = (
+    data.projectResources as
+      | {
+          resources?: Array<{
+            folderUri?: unknown;
+            gitFolder?: { folderUri?: unknown };
+          }>;
+        }
+      | undefined
+  )?.resources;
+  const hasGitFolder =
+    Array.isArray(resources) &&
+    resources.some(
+      (resource) => typeof resource.gitFolder?.folderUri === "string",
+    );
+
+  // Antigravity's persisted project records carry lifecycle metadata; the
+  // duplicate workspace-only records created by transient/headless clients do
+  // not. Prefer the persisted record, then a Git-aware record, with the ID used
+  // only as a deterministic final tie-breaker.
+  return (
+    (typeof data.updatedAt === "string" ? 4 : 0) +
+    (data.isWorkspaceOnly === false ? 2 : 0) +
+    (hasGitFolder ? 1 : 0)
+  );
 }
 
 export async function getProjectInfos(): Promise<ProjectInfo[]> {
@@ -230,6 +266,7 @@ export async function getProjectInfos(): Promise<ProjectInfo[]> {
               id: data.id,
               name: safeDecodeUriComponent(data.name),
               folderUris,
+              selectionPriority: projectSelectionPriority(data),
             });
           }
         } catch {
@@ -240,11 +277,15 @@ export async function getProjectInfos(): Promise<ProjectInfo[]> {
   } catch {
     // projects dir missing or unreadable
   }
-  return projects;
+  return projects.sort(
+    (left, right) =>
+      (right.selectionPriority ?? 0) - (left.selectionPriority ?? 0) ||
+      left.id.localeCompare(right.id),
+  );
 }
 
 function normalizeProjectWorkspaceUri(workspaceUri: string): string {
-  return workspaceUri.replace(/\/$/, "");
+  return safeDecodeUriComponent(workspaceUri).replace(/\/$/, "");
 }
 
 function findProjectForWorkspaceUri(
@@ -252,6 +293,10 @@ function findProjectForWorkspaceUri(
   projects: ProjectInfo[],
 ): ProjectInfo | undefined {
   const normalizedTarget = normalizeProjectWorkspaceUri(workspaceUri);
+  const matches: Array<{
+    project: ProjectInfo;
+    folderLength: number;
+  }> = [];
 
   for (const project of projects) {
     for (const folderUri of project.folderUris) {
@@ -260,12 +305,20 @@ function findProjectForWorkspaceUri(
         normalizedTarget === normalizedFolder ||
         normalizedTarget.startsWith(normalizedFolder + "/")
       ) {
-        return project;
+        matches.push({ project, folderLength: normalizedFolder.length });
       }
     }
   }
 
-  return undefined;
+  matches.sort(
+    (left, right) =>
+      right.folderLength - left.folderLength ||
+      (right.project.selectionPriority ?? 0) -
+        (left.project.selectionPriority ?? 0) ||
+      left.project.id.localeCompare(right.project.id),
+  );
+
+  return matches[0]?.project;
 }
 
 /**

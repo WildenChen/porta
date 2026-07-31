@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { LSInstance } from "../discovery.js";
-import { LSDiscovery, probeConnectRpcPort } from "../discovery.js";
+import {
+  includeAntigravityIde,
+  isAllowedAppDataDir,
+  LSDiscovery,
+  probeConnectRpcPort,
+} from "../discovery.js";
 
 function makeInstance(overrides: Partial<LSInstance> = {}): LSInstance {
   return {
@@ -235,6 +240,25 @@ describe("LSDiscovery caching and lookup", () => {
     await discovery.getInstance();
 
     expect(mockDiscover).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Antigravity app-data source policy", () => {
+  it("uses Antigravity.app only by default", () => {
+    expect(includeAntigravityIde({})).toBe(false);
+    expect(isAllowedAppDataDir("antigravity", {})).toBe(true);
+    expect(isAllowedAppDataDir("antigravity-ide", {})).toBe(false);
+    expect(isAllowedAppDataDir("other-client", {})).toBe(false);
+  });
+
+  it("includes Antigravity IDE.app only with explicit opt-in", () => {
+    const env = { PORTA_INCLUDE_ANTIGRAVITY_IDE: "1" };
+    expect(includeAntigravityIde(env)).toBe(true);
+    expect(isAllowedAppDataDir("antigravity-ide", env)).toBe(true);
+  });
+
+  it("keeps legacy Language Servers that omit app_data_dir", () => {
+    expect(isAllowedAppDataDir(undefined, {})).toBe(true);
   });
 });
 

@@ -85,6 +85,18 @@ PORTA_AUTH_MODE=password
 # provide PORTA_PASSWORD from your shell or secret manager
 ```
 
+Porta uses **Antigravity.app** (`app_data_dir=antigravity`) as its conversation
+source by default. It intentionally excludes the separate
+**Antigravity IDE.app** data tree so IDE conversations cannot appear
+unexpectedly in Porta. To combine both products explicitly, opt in:
+
+```bash
+PORTA_INCLUDE_ANTIGRAVITY_IDE=1
+```
+
+After changing this setting, restart only the Porta proxy. No Antigravity
+conversation files are moved or deleted.
+
 Priority order:
 
 1. Existing runtime auth config wins.
@@ -211,8 +223,9 @@ constraints are inherent to its LSP-bridge architecture:
 - **No code editing or terminal**: Porta relays conversation-level
   data only. Use your local editor or SSH for file operations.
 - **Single administrator**: Porta can discover multiple workspace-scoped or hub
-  Language Server instances on the same Antigravity installation, but it has no
-  multi-user, multi-account, or multi-tenant model.
+  Language Server instances from Antigravity.app, but it has no multi-user,
+  multi-account, or multi-tenant model. Antigravity IDE.app is excluded unless
+  `PORTA_INCLUDE_ANTIGRAVITY_IDE=1` is set explicitly.
 
 ### Platform support
 

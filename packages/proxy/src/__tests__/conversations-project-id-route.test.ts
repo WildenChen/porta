@@ -46,7 +46,8 @@ vi.mock("../metadata.js", async (importOriginal) => {
   };
 });
 
-const { registerConversationRoutes } = await import("../routes/conversations.js");
+const { clearConversationSummaryCache, registerConversationRoutes } =
+  await import("../routes/conversations.js");
 
 const scopedLS: LSInstance = {
   pid: 10,
@@ -67,6 +68,7 @@ function app() {
 describe("POST /api/conversations project association", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearConversationSummaryCache();
     conversationAffinity.clear();
     conversationInstanceAffinity.clear();
     mockGetInstances.mockResolvedValue([scopedLS]);

@@ -40,7 +40,8 @@ vi.mock("../metadata.js", async (importOriginal) => {
   };
 });
 
-const { registerConversationRoutes } = await import("../routes/conversations.js");
+const { clearConversationSummaryCache, registerConversationRoutes } =
+  await import("../routes/conversations.js");
 
 const makeInstance = (overrides: Partial<LSInstance> = {}): LSInstance => ({
   pid: 1000 + Math.floor(Math.random() * 9000),
@@ -61,6 +62,7 @@ function app() {
 describe("GET /api/conversations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearConversationSummaryCache();
     conversationAffinity.clear();
     conversationInstanceAffinity.clear();
     mockScanDiskConversations.mockResolvedValue([]);
@@ -136,6 +138,46 @@ describe("GET /api/conversations", () => {
     expect(body.trajectorySummaries["c-meta"].workspaces).toEqual([
       { workspaceFolderAbsoluteUri: "file:///home/user/project" },
     ]);
+  });
+
+  it("keeps last-known-good summaries during a transient listing failure", async () => {
+    const hubLS = makeInstance({
+      pid: 31,
+      workspaceId: undefined,
+      appDataDir: "antigravity",
+    });
+    mockGetInstances.mockResolvedValue([hubLS]);
+    mockRpcCall.mockResolvedValueOnce({
+      trajectorySummaries: {
+        "c-stable": {
+          summary: "Stable conversation",
+          stepCount: 9,
+          lastModifiedTime: "2026-06-01T00:00:00.000Z",
+          workspaces: [
+            { workspaceFolderAbsoluteUri: "file:///home/user/project" },
+          ],
+        },
+      },
+    });
+
+    const first = await app().request("/api/conversations");
+    expect(first.status).toBe(200);
+
+    mockRpcCall.mockRejectedValueOnce(new Error("temporary LS failure"));
+    const degraded = await app().request("/api/conversations");
+    const degradedBody = await degraded.json();
+
+    expect(degraded.status).toBe(200);
+    expect(degradedBody.trajectorySummaries["c-stable"]).toMatchObject({
+      summary: "Stable conversation",
+      status: "CASCADE_RUN_STATUS_UNLOADED",
+      _stale: true,
+    });
+
+    mockRpcCall.mockResolvedValueOnce({ trajectorySummaries: {} });
+    const recovered = await app().request("/api/conversations");
+    const recoveredBody = await recovered.json();
+    expect(recoveredBody.trajectorySummaries).toEqual({});
   });
 
   it("scans the conversation directory for the running Antigravity app data dir", async () => {
@@ -698,4 +740,3 @@ describe("POST /api/conversations", () => {
     );
   });
 });
-

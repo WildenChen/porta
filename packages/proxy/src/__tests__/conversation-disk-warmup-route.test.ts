@@ -53,7 +53,8 @@ vi.mock("../metadata.js", async (importOriginal) => {
   };
 });
 
-const { registerConversationRoutes } = await import("../routes/conversations.js");
+const { clearConversationSummaryCache, registerConversationRoutes } =
+  await import("../routes/conversations.js");
 
 function instance(pid: number): LSInstance {
   return {
@@ -96,6 +97,7 @@ const defaultProjectInfos: ProjectInfo[] = [
 describe("GET /api/conversations disk warm-up", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearConversationSummaryCache();
     conversationAffinity.clear();
     conversationInstanceAffinity.clear();
     mockGetProjectInfos.mockResolvedValue(defaultProjectInfos);

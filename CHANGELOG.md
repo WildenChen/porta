@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Restrict Language Server and disk conversation discovery to Antigravity.app
+  by default, preventing Antigravity IDE.app conversations from leaking into
+  Porta unless `PORTA_INCLUDE_ANTIGRAVITY_IDE=1` is explicitly configured.
+- Keep a bounded last-known-good conversation summary cache during transient
+  Language Server listing failures so polling does not make conversations
+  temporarily disappear or lose their project/title metadata.
+- Resolve duplicate Antigravity project records deterministically, preferring
+  the persisted Git-aware project so existing and newly created conversations
+  keep the same project ID.
+
 ## [0.14.0+wilden.01] - 2026-07-28
 
 ### Added

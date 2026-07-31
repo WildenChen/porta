@@ -66,6 +66,7 @@ describe("Antigravity project metadata", () => {
           "file:///home/test/project-a",
           "file:///home/test/project-a/repo",
         ],
+        selectionPriority: 1,
       },
     ]);
     expect(mockReadFile).toHaveBeenCalledTimes(1);
@@ -80,6 +81,62 @@ describe("Antigravity project metadata", () => {
     const map = await getProjectNameMap();
 
     expect([...map.entries()]).toEqual([["project-a", "Project A"]]);
+  });
+
+  it("ranks persisted Git-aware records ahead of duplicate minimal records", async () => {
+    mockReaddir.mockResolvedValue([
+      "minimal-z.json",
+      "canonical.json",
+      "minimal-a.json",
+    ]);
+    mockReadFile.mockImplementation(async (path: string) => {
+      const id = path.split("/").at(-1)?.replace(".json", "");
+      if (id === "canonical") {
+        return JSON.stringify({
+          id,
+          name: "Project A",
+          updatedAt: "2026-07-30T00:00:00.000Z",
+          isWorkspaceOnly: false,
+          projectResources: {
+            resources: [
+              {
+                gitFolder: {
+                  folderUri: "file:///home/test/project-a",
+                },
+              },
+            ],
+          },
+        });
+      }
+      return JSON.stringify({
+        id,
+        name: "Project A",
+        projectResources: {
+          resources: [{ folderUri: "file:///home/test/project-a" }],
+        },
+      });
+    });
+
+    await expect(getProjectInfos()).resolves.toEqual([
+      {
+        id: "canonical",
+        name: "Project A",
+        folderUris: ["file:///home/test/project-a"],
+        selectionPriority: 7,
+      },
+      {
+        id: "minimal-a",
+        name: "Project A",
+        folderUris: ["file:///home/test/project-a"],
+        selectionPriority: 0,
+      },
+      {
+        id: "minimal-z",
+        name: "Project A",
+        folderUris: ["file:///home/test/project-a"],
+        selectionPriority: 0,
+      },
+    ]);
   });
 
   it.each([
@@ -139,6 +196,105 @@ describe("Antigravity project metadata", () => {
     }
   });
 
+  it("selects the persisted canonical project when duplicate folder records exist", async () => {
+    const duplicateProjects = [
+      {
+        id: "minimal-b",
+        name: "Project A",
+        folderUris: ["file:///home/test/project-a"],
+        selectionPriority: 0,
+      },
+      {
+        id: "canonical",
+        name: "Project A",
+        folderUris: ["file:///home/test/project-a"],
+        selectionPriority: 7,
+      },
+      {
+        id: "minimal-a",
+        name: "Project A",
+        folderUris: ["file:///home/test/project-a"],
+        selectionPriority: 0,
+      },
+    ];
+
+    await expect(
+      resolveProjectAssociation(
+        { workspaceUri: "file:///home/test/project-a" },
+        duplicateProjects,
+      ),
+    ).resolves.toMatchObject({
+      projectId: "canonical",
+      matched: true,
+      source: "folder-uri",
+    });
+  });
+
+  it("uses project ID as a deterministic tie-breaker for equal duplicate records", async () => {
+    const equalProjects = [
+      {
+        id: "project-z",
+        name: "Project A",
+        folderUris: ["file:///home/test/project-a"],
+      },
+      {
+        id: "project-a",
+        name: "Project A",
+        folderUris: ["file:///home/test/project-a"],
+      },
+    ];
+
+    await expect(
+      findProjectIdForWorkspaceUri(
+        "file:///home/test/project-a",
+        equalProjects,
+      ),
+    ).resolves.toBe("project-a");
+  });
+
+  it("normalizes percent-encoded workspace URIs before matching", async () => {
+    await expect(
+      findProjectIdForWorkspaceUri(
+        "file:///home/test/My Project",
+        [
+          {
+            id: "encoded-project",
+            name: "Encoded",
+            folderUris: ["file:///home/test/My%20Project"],
+          },
+        ],
+      ),
+    ).resolves.toBe("encoded-project");
+  });
+
+  it("prefers the most specific folder before project record richness", async () => {
+    const nestedProjects = [
+      {
+        id: "rich-parent",
+        name: "Parent",
+        folderUris: ["file:///home/test"],
+        selectionPriority: 7,
+      },
+      {
+        id: "exact-child",
+        name: "Project A",
+        folderUris: ["file:///home/test/project-a"],
+        selectionPriority: 0,
+      },
+    ];
+
+    await expect(
+      resolveProjectAssociation(
+        { workspaceUri: "file:///home/test/project-a" },
+        nestedProjects,
+      ),
+    ).resolves.toMatchObject({
+      projectId: "exact-child",
+      matched: true,
+      source: "folder-uri",
+    });
+  });
+
   it("returns an explicit unmatched status without exposing project config", async () => {
     await expect(
       resolveProjectAssociation(
@@ -177,7 +333,12 @@ describe("Antigravity project metadata", () => {
     });
 
     await expect(getProjectInfos()).resolves.toEqual([
-      { id: "project-a", name: "Project A", folderUris: [] },
+      {
+        id: "project-a",
+        name: "Project A",
+        folderUris: [],
+        selectionPriority: 0,
+      },
     ]);
   });
 });
