@@ -7,6 +7,7 @@ import type { LSInstance } from "../discovery.js";
 import {
   discovery,
   rpc,
+  extractTargetAppDataDir,
   conversationAffinity,
   conversationInstanceAffinity,
   uriToWorkspaceId,
@@ -242,7 +243,8 @@ export function registerConversationRoutes(app: Hono): void {
     try {
       const projectInfos = await getProjectInfos();
       const projectNameMap = await getProjectNameMap(projectInfos);
-      const instances = await discovery.getInstances();
+      const targetApp = extractTargetAppDataDir(c);
+      const instances = await discovery.getInstances(false, targetApp);
       const merged: Record<string, Record<string, unknown>> = {};
       let successfulListings = 0;
       const now = Date.now();
@@ -340,9 +342,8 @@ export function registerConversationRoutes(app: Hono): void {
 
       // Also scan disk for conversations in the app-data tree used by the
       // running LS instances.
-      const diskConversationDirs = conversationDirsForAppDataDirs(
-        instances.map((inst) => inst.appDataDir),
-      );
+      const targetDirs = targetApp ? [targetApp] : instances.map((inst) => inst.appDataDir);
+      const diskConversationDirs = conversationDirsForAppDataDirs(targetDirs);
       const diskIds = await scanDiskConversations(
         diskConversationDirs.length > 0 ? diskConversationDirs : undefined,
       );
@@ -450,16 +451,20 @@ export function registerConversationRoutes(app: Hono): void {
 
   app.get("/api/conversations/:id", async (c) => {
     const id = c.req.param("id");
+    const targetApp = extractTargetAppDataDir(c);
     try {
-      const data = await rpcForConversation(
-        "GetCascadeTrajectory",
-        id,
-        {
-          cascadeId: id,
-        },
-        undefined,
-        true,
-      );
+      const data = targetApp
+        ? await rpcForConversation(
+            "GetCascadeTrajectory",
+            id,
+            { cascadeId: id },
+            undefined,
+            true,
+            targetApp,
+          )
+        : await rpcForConversation("GetCascadeTrajectory", id, {
+            cascadeId: id,
+          }, undefined, true);
       return c.json(data);
     } catch (err) {
       return handleRPCError(c, err);
@@ -468,6 +473,7 @@ export function registerConversationRoutes(app: Hono): void {
 
   app.get("/api/conversations/:id/steps", async (c) => {
     const id = c.req.param("id");
+    const targetApp = extractTargetAppDataDir(c);
     const offset = parseInt(c.req.query("offset") ?? "0", 10);
     const limitParam = c.req.query("limit");
     let limit = limitParam ? parseInt(limitParam, 10) : undefined;
@@ -488,7 +494,7 @@ export function registerConversationRoutes(app: Hono): void {
         // readOnly=true: this endpoint only reads steps; the pinned instance
         // is NOT reused for mutations, so try-all fallback is safe and
         // necessary for disk-only conversations that no LS has in memory yet.
-        const sc = await getStepCount(id, undefined, true);
+        const sc = targetApp ? await getStepCount(id, undefined, true, targetApp) : await getStepCount(id, undefined, true);
         pinnedInstance = sc.instance;
         if (sc.count > 0) {
           stepCount = sc.count;
@@ -522,16 +528,28 @@ export function registerConversationRoutes(app: Hono): void {
 
       while (stepsArray.length < targetCount) {
         try {
-          const data = await rpcForConversation<{ steps?: unknown[] }>(
-            "GetCascadeTrajectorySteps",
-            id,
-            {
-              cascadeId: id,
-              stepOffset: currentOffset,
-            },
-            pinnedInstance,
-            true,
-          );
+          const data = targetApp
+            ? await rpcForConversation<{ steps?: unknown[] }>(
+                "GetCascadeTrajectorySteps",
+                id,
+                {
+                  cascadeId: id,
+                  stepOffset: currentOffset,
+                },
+                pinnedInstance,
+                true,
+                targetApp,
+              )
+            : await rpcForConversation<{ steps?: unknown[] }>(
+                "GetCascadeTrajectorySteps",
+                id,
+                {
+                  cascadeId: id,
+                  stepOffset: currentOffset,
+                },
+                pinnedInstance,
+                true,
+              );
 
           const chunk = data.steps ?? [];
           if (chunk.length === 0) break;
@@ -554,7 +572,7 @@ export function registerConversationRoutes(app: Hono): void {
           } else if (isRecoverableStepError(fetchErr)) {
             // Corrupted batch (e.g. invalid UTF-8) — binary search forward
             if (stepCount === undefined) {
-              const sc = await getStepCount(id, undefined, true);
+              const sc = await getStepCount(id, undefined, true, targetApp);
               stepCount = sc.count;
               pinnedInstance ??= sc.instance;
             }
@@ -609,7 +627,19 @@ export function registerConversationRoutes(app: Hono): void {
         typeof body.workspaceFolderAbsoluteUri === "string"
           ? body.workspaceFolderAbsoluteUri
           : bodyWorkspaceUris[0];
-      const instances = await discovery.getInstances();
+      const targetApp = extractTargetAppDataDir(c);
+      const instances = await discovery.getInstances(false, targetApp);
+
+      if (instances.length === 0) {
+        return c.json(
+          {
+            error: targetApp
+              ? `No running Language Server found for ${targetApp}.`
+              : "No running Language Server found.",
+          },
+          503,
+        );
+      }
 
       // Resolve which LS instance to use based on workspace URI
       let targetInstance: LSInstance | undefined;
@@ -703,12 +733,13 @@ export function registerConversationRoutes(app: Hono): void {
 
   app.post("/api/conversations/:id/messages", async (c) => {
     const id = c.req.param("id");
+    const targetApp = extractTargetAppDataDir(c);
     try {
       return await runConversationMutation(id, async () => {
         const body = await c.req.json();
         const { items, model, media, plannerType, clientMessageId } = body;
         const metadata = await getMetadata(!!body.fileAccessGranted);
-        const { count: preSendStepCount, instance } = await getStepCount(id);
+        const { count: preSendStepCount, instance } = await getStepCount(id, undefined, false, targetApp);
 
         const req: Record<string, unknown> = {
           metadata,
@@ -732,12 +763,22 @@ export function registerConversationRoutes(app: Hono): void {
           };
         }
 
-        const data = await rpcForConversation(
-          "SendUserCascadeMessage",
-          id,
-          req,
-          instance,
-        );
+        conversationSignals.emit("activate", id);
+        const data = targetApp
+          ? await rpcForConversation(
+              "SendUserCascadeMessage",
+              id,
+              req,
+              instance,
+              false,
+              targetApp,
+            )
+          : await rpcForConversation(
+              "SendUserCascadeMessage",
+              id,
+              req,
+              instance,
+            );
         if (typeof clientMessageId === "string" && clientMessageId.length > 0) {
           messageTracker.trackPendingMessage(
             id,
@@ -745,7 +786,6 @@ export function registerConversationRoutes(app: Hono): void {
             preSendStepCount,
           );
         }
-        conversationSignals.emit("activate", id);
         return c.json(data);
       });
     } catch (err) {
@@ -757,10 +797,22 @@ export function registerConversationRoutes(app: Hono): void {
 
   app.post("/api/conversations/:id/stop", async (c) => {
     const id = c.req.param("id");
+    const targetApp = extractTargetAppDataDir(c);
     try {
-      const data = await rpcForConversation("CancelCascadeInvocation", id, {
-        cascadeId: id,
-      });
+      const data = targetApp
+        ? await rpcForConversation(
+            "CancelCascadeInvocation",
+            id,
+            {
+              cascadeId: id,
+            },
+            undefined,
+            false,
+            targetApp,
+          )
+        : await rpcForConversation("CancelCascadeInvocation", id, {
+            cascadeId: id,
+          });
       return c.json(data);
     } catch (err) {
       return handleRPCError(c, err);
@@ -771,13 +823,26 @@ export function registerConversationRoutes(app: Hono): void {
 
   app.delete("/api/conversations/:id", async (c) => {
     const id = c.req.param("id");
+    const targetApp = extractTargetAppDataDir(c);
     try {
       return await runConversationMutation(id, async () => {
         const metadata = await getMetadata(true);
-        const data = await rpcForConversation("DeleteCascadeTrajectory", id, {
-          metadata,
-          cascadeId: id,
-        });
+        const data = targetApp
+          ? await rpcForConversation(
+              "DeleteCascadeTrajectory",
+              id,
+              {
+                metadata,
+                cascadeId: id,
+              },
+              undefined,
+              false,
+              targetApp,
+            )
+          : await rpcForConversation("DeleteCascadeTrajectory", id, {
+              metadata,
+              cascadeId: id,
+            });
         warmedAt.delete(id);
         lastKnownSummaries.delete(id);
         messageTracker.clearConversation(id);
@@ -794,6 +859,7 @@ export function registerConversationRoutes(app: Hono): void {
 
   app.post("/api/conversations/:id/file-permission", async (c) => {
     const id = c.req.param("id");
+    const targetApp = extractTargetAppDataDir(c);
     try {
       const body = await c.req.json();
       const { trajectoryId, stepIndex, allow, scope, absolutePathUri } = body;
@@ -812,25 +878,32 @@ export function registerConversationRoutes(app: Hono): void {
         );
       }
 
-      // Build HandleCascadeUserInteraction request with exact protobuf structure.
-      // CRITICAL: top-level field is "interaction" (not "userInteraction"),
-      // and it MUST include trajectoryId + stepIndex alongside filePermission.
-      const data = await rpcForConversation(
-        "HandleCascadeUserInteraction",
-        id,
-        {
-          cascadeId: id,
-          interaction: {
-            trajectoryId,
-            stepIndex: Number(stepIndex),
-            filePermission: {
-              allow: !!allow,
-              scope: Number(scope) || 0,
-              absolutePathUri,
-            },
+      const payload = {
+        cascadeId: id,
+        interaction: {
+          trajectoryId,
+          stepIndex: Number(stepIndex),
+          filePermission: {
+            allow: !!allow,
+            scope: Number(scope) || 0,
+            absolutePathUri,
           },
         },
-      );
+      };
+      const data = targetApp
+        ? await rpcForConversation(
+            "HandleCascadeUserInteraction",
+            id,
+            payload,
+            undefined,
+            false,
+            targetApp,
+          )
+        : await rpcForConversation(
+            "HandleCascadeUserInteraction",
+            id,
+            payload,
+          );
 
       // Permission approval unblocks subsequent WAITING steps — wake WS polling
       conversationSignals.emit("activate", id);
@@ -845,6 +918,7 @@ export function registerConversationRoutes(app: Hono): void {
 
   app.post("/api/conversations/:id/command-action", async (c) => {
     const id = c.req.param("id");
+    const targetApp = extractTargetAppDataDir(c);
     try {
       const body = await c.req.json();
       const { trajectoryId, stepIndex, approved } = body;
@@ -858,22 +932,30 @@ export function registerConversationRoutes(app: Hono): void {
         );
       }
 
-      // Use HandleCascadeUserInteraction with commandAction field.
-      // Same RPC as filePermission, different interaction type.
-      const data = await rpcForConversation(
-        "HandleCascadeUserInteraction",
-        id,
-        {
-          cascadeId: id,
-          interaction: {
-            trajectoryId,
-            stepIndex: Number(stepIndex),
-            permission: {
-              allow: !!approved,
-            },
+      const payload = {
+        cascadeId: id,
+        interaction: {
+          trajectoryId,
+          stepIndex: Number(stepIndex),
+          permission: {
+            allow: !!approved,
           },
         },
-      );
+      };
+      const data = targetApp
+        ? await rpcForConversation(
+            "HandleCascadeUserInteraction",
+            id,
+            payload,
+            undefined,
+            false,
+            targetApp,
+          )
+        : await rpcForConversation(
+            "HandleCascadeUserInteraction",
+            id,
+            payload,
+          );
 
       // Command approval/rejection unblocks the agent — wake WS polling
       conversationSignals.emit("activate", id);
@@ -888,6 +970,7 @@ export function registerConversationRoutes(app: Hono): void {
 
   app.post("/api/conversations/:id/ask-question", async (c) => {
     const id = c.req.param("id");
+    const targetApp = extractTargetAppDataDir(c);
     try {
       const body = await c.req.json();
       const { trajectoryId, stepIndex, responses, cancelled } = body;
@@ -901,21 +984,31 @@ export function registerConversationRoutes(app: Hono): void {
         );
       }
 
-      const data = await rpcForConversation(
-        "HandleCascadeUserInteraction",
-        id,
-        {
-          cascadeId: id,
-          interaction: {
-            trajectoryId,
-            stepIndex: Number(stepIndex),
-            askQuestion: {
-              responses: Array.isArray(responses) ? responses : [],
-              cancelled: !!cancelled,
-            },
+      const payload = {
+        cascadeId: id,
+        interaction: {
+          trajectoryId,
+          stepIndex: Number(stepIndex),
+          askQuestion: {
+            responses: Array.isArray(responses) ? responses : [],
+            cancelled: !!cancelled,
           },
         },
-      );
+      };
+      const data = targetApp
+        ? await rpcForConversation(
+            "HandleCascadeUserInteraction",
+            id,
+            payload,
+            undefined,
+            false,
+            targetApp,
+          )
+        : await rpcForConversation(
+            "HandleCascadeUserInteraction",
+            id,
+            payload,
+          );
 
       conversationSignals.emit("activate", id);
 
@@ -927,27 +1020,28 @@ export function registerConversationRoutes(app: Hono): void {
 
   app.post("/api/conversations/:id/revert", async (c) => {
     const id = c.req.param("id");
+    const targetApp = extractTargetAppDataDir(c);
     try {
       return await runConversationMutation(id, async () => {
         const body = await c.req.json();
         const metadata = await getMetadata(true);
-
         const req: Record<string, unknown> = {
           cascadeId: id,
           stepIndex: body.stepIndex,
+          editText: body.editText,
           metadata,
         };
 
-        if (body.model) {
-          req.overrideConfig = {
-            plannerConfig: {
-              plannerTypeConfig: { conversational: {} },
-              requestedModel: { model: body.model },
-            },
-          };
-        }
-
-        const data = await rpcForConversation("RevertToCascadeStep", id, req);
+        const data = targetApp
+          ? await rpcForConversation(
+              "RevertToCascadeStep",
+              id,
+              req,
+              undefined,
+              false,
+              targetApp,
+            )
+          : await rpcForConversation("RevertToCascadeStep", id, req);
         messageTracker.clearConversation(id);
         conversationSignals.emit("activate", id);
         return c.json(data);
