@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.16.0+wilden.01] - 2026-08-20
+
+### Added
+
+- Upstream baseline updated to 0.16.0 (including 0.15.0 changes):
+  - Subagent status card and native subagent payload support (#125).
+  - Target AI Engine selector (All Engines, Antigravity 2, Antigravity IDE) preserved across requests and WebSocket connections (#128, #129).
+  - Standalone Antigravity CLI/core and headless `agy` discovery (#127, #129).
+  - Native production runner `scripts/start-prod.mjs` (#127, #129).
+
+### Changed
+
+- Conversation history session cache restore for mobile reloads (#128, #129).
+
+### Fixed
+
+- Chat auto-scroll follows asynchronous content resize (#128, #129).
+- Language Server discovery invalidates stale routing state on unavailable/not_found responses (#127, #129).
+- Command-action responses use protobuf-compliant `permission` interaction payload (#127, #129).
+
+### Security
+
+- Updated dependencies to upstream 0.16.0 baseline (React Router, Hono, brace-expansion) with upstream security fixes.
+
+### Retained Wilden Customizations
+
+- Built-in Password Authentication and fail-closed auth (`PORTA_REQUIRE_AUTH`).
+- Antigravity project association and metadata resolution.
+- Default and last-used project selection.
+- Multi-Language-Server routing across workspaces.
+- Existing macOS deployment configuration and scripts.
+- Antigravity conversation discovery stabilization (4f5c742) and default behavior limiting conversation listing to Antigravity.app unless opted in.
+- Wilden version metadata and UI badges.
+
+
 ### Fixed
 
 - Restrict Language Server and disk conversation discovery to Antigravity.app

@@ -3,7 +3,7 @@
  */
 
 import type { Hono } from "hono";
-import { discovery, rpc } from "../routing.js";
+import { discovery, rpc, extractTargetAppDataDir } from "../routing.js";
 import { handleRPCError } from "../errors.js";
 import {
   extractConversationWorkspaces,
@@ -14,7 +14,8 @@ import {
 export function registerWorkspaceRoutes(app: Hono): void {
   app.get("/api/workspaces", async (c) => {
     try {
-      const instances = await discovery.getInstances();
+      const targetApp = extractTargetAppDataDir(c);
+      const instances = await discovery.getInstances(false, targetApp);
       const workspaceMap = new Map<
         string,
         { workspaceUri: string; gitRootUri?: string }

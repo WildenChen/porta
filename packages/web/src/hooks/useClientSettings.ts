@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS: ClientSettings = {
   defaultPlannerType: "conversational",
   browserNotificationsEnabled: false,
   defaultProject: DEFAULT_PROJECT_PREFERENCE,
+  targetApp: "all",
 };
 
 export function parseClientSettings(raw: string | null): ClientSettings {

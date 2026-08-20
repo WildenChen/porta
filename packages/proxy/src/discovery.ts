@@ -18,6 +18,7 @@ import { request as httpsRequest } from "node:https";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { platformAdapter } from "./platform/index.js";
+import { ensureStandaloneCore } from "./core-manager.js";
 import {
   getTransportOrder,
   rememberSuccessfulTransport,
@@ -44,6 +45,10 @@ const ANTIGRAVITY_IDE_DAEMON_DIR = {
   dir: join(homedir(), ".gemini", "antigravity-ide", "daemon"),
   appDataDir: "antigravity-ide",
 };
+const ANTIGRAVITY_CLI_DAEMON_DIR = {
+  dir: join(homedir(), ".gemini", "antigravity-cli", "daemon"),
+  appDataDir: "antigravity-cli",
+};
 
 export function includeAntigravityIde(
   env: NodeJS.ProcessEnv = process.env,
@@ -54,14 +59,25 @@ export function includeAntigravityIde(
 export function isAllowedAppDataDir(
   appDataDir: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
+  targetAppDataDir?: string,
 ): boolean {
+  if (targetAppDataDir && targetAppDataDir !== "all") {
+    return appDataDir === targetAppDataDir;
+  }
   if (!appDataDir || appDataDir === "antigravity") return true;
+  if (appDataDir === "antigravity-cli") return true;
   return appDataDir === "antigravity-ide" && includeAntigravityIde(env);
 }
 
-function daemonDirs(env: NodeJS.ProcessEnv) {
+function daemonDirs(env: NodeJS.ProcessEnv, targetAppDataDir?: string) {
+  if (targetAppDataDir && targetAppDataDir !== "all") {
+    if (targetAppDataDir === "antigravity") return [ANTIGRAVITY_DAEMON_DIR];
+    if (targetAppDataDir === "antigravity-ide") return [ANTIGRAVITY_IDE_DAEMON_DIR];
+    if (targetAppDataDir === "antigravity-cli") return [ANTIGRAVITY_CLI_DAEMON_DIR];
+  }
   return [
     ANTIGRAVITY_DAEMON_DIR,
+    ANTIGRAVITY_CLI_DAEMON_DIR,
     ...(includeAntigravityIde(env) ? [ANTIGRAVITY_IDE_DAEMON_DIR] : []),
   ];
 }
@@ -69,10 +85,11 @@ const SERVICE_PREFIX = "exa.language_server_pb.LanguageServerService";
 
 async function discoverFromDaemon(
   env: NodeJS.ProcessEnv,
+  targetAppDataDir?: string,
 ): Promise<LSInstance[]> {
   const instances: LSInstance[] = [];
 
-  for (const { dir: daemonDir, appDataDir } of daemonDirs(env)) {
+  for (const { dir: daemonDir, appDataDir } of daemonDirs(env, targetAppDataDir)) {
     try {
       const files = await readdir(daemonDir);
       const lsFiles = files.filter(
@@ -110,6 +127,7 @@ async function discoverFromDaemon(
 
 async function discoverFromProcess(
   env: NodeJS.ProcessEnv,
+  targetAppDataDir?: string,
 ): Promise<LSInstance[]> {
   const instances: LSInstance[] = [];
 
@@ -126,7 +144,7 @@ async function discoverFromProcess(
     }> = [];
 
     for (const candidate of candidates) {
-      if (!isAllowedAppDataDir(candidate.appDataDir, env)) continue;
+      if (!isAllowedAppDataDir(candidate.appDataDir, env, targetAppDataDir)) continue;
       if (!(await platformAdapter.isPidAlive(candidate.pid))) continue;
 
       if (candidate.httpsPort) {
@@ -386,9 +404,10 @@ async function enrichReachableInstances(
  */
 export async function discoverInstances(
   env: NodeJS.ProcessEnv = process.env,
+  targetAppDataDir?: string,
 ): Promise<LSInstance[]> {
-  const daemonInstances = await discoverFromDaemon(env);
-  const processInstances = await discoverFromProcess(env);
+  const daemonInstances = await discoverFromDaemon(env, targetAppDataDir);
+  const processInstances = await discoverFromProcess(env, targetAppDataDir);
 
   const instanceMap = new Map<number, LSInstance>();
 
@@ -432,49 +451,68 @@ export class LSDiscovery {
     this.ttlMs = ttlMs;
   }
 
-  protected async discover(): Promise<LSInstance[]> {
-    return discoverInstances();
+  protected async discover(targetAppDataDir?: string): Promise<LSInstance[]> {
+    let instances = await discoverInstances(process.env, targetAppDataDir);
+    if (instances.length === 0) {
+      await ensureStandaloneCore();
+      instances = await discoverInstances(process.env, targetAppDataDir);
+    }
+    return instances;
   }
 
-  async getInstances(forceRefresh = false): Promise<LSInstance[]> {
+  invalidateCache(): void {
+    this.lastDiscovery = 0;
+  }
+
+  async getInstances(
+    forceRefresh = false,
+    targetAppDataDir?: string,
+  ): Promise<LSInstance[]> {
     const now = Date.now();
     const cacheFresh =
       !forceRefresh &&
       this.instances.length > 0 &&
       now - this.lastDiscovery <= this.ttlMs;
 
+    let instances: LSInstance[];
     if (cacheFresh) {
-      return this.instances;
+      instances = this.instances;
+    } else if (!forceRefresh && this.pendingDiscovery) {
+      instances = await this.pendingDiscovery;
+    } else {
+      const generation = ++this.discoveryGeneration;
+      const pending = this.discover()
+        .then((discovered) => {
+          if (generation === this.discoveryGeneration) {
+            this.instances = discovered;
+            this.lastDiscovery = Date.now();
+          }
+          return discovered;
+        })
+        .finally(() => {
+          if (this.pendingDiscovery === pending) {
+            this.pendingDiscovery = null;
+          }
+        });
+
+      this.pendingDiscovery = pending;
+      instances = await pending;
     }
 
-    if (!forceRefresh && this.pendingDiscovery) {
-      return this.pendingDiscovery;
+    if (targetAppDataDir && targetAppDataDir !== "all") {
+      return instances.filter((inst) => inst.appDataDir === targetAppDataDir);
     }
-
-    const generation = ++this.discoveryGeneration;
-    const pending = this.discover()
-      .then((instances) => {
-        if (generation === this.discoveryGeneration) {
-          this.instances = instances;
-          this.lastDiscovery = Date.now();
-        }
-        return instances;
-      })
-      .finally(() => {
-        if (this.pendingDiscovery === pending) {
-          this.pendingDiscovery = null;
-        }
-      });
-
-    this.pendingDiscovery = pending;
-    return pending;
+    return instances;
   }
 
   /**
    * Get the first available instance (or a specific workspace).
    */
-  async getInstance(workspaceId?: string): Promise<LSInstance | null> {
-    const instances = await this.getInstances();
+  async getInstance(
+    workspaceId?: string,
+    targetAppDataDir?: string,
+  ): Promise<LSInstance | null> {
+    const instances = await this.getInstances(false, targetAppDataDir);
 
     if (workspaceId) {
       return instances.find((inst) => inst.workspaceId === workspaceId) ?? null;
