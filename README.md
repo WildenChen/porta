@@ -9,7 +9,123 @@ Access your local Antigravity sessions from your phone, tablet, or any remote br
 
 Current Wilden build: **0.16.0+wilden.01**. Based on upstream **0.16.0**.
 
-Porta is a two-part system: a **proxy** that discovers and routes across local Antigravity Language Server instances, and a **web UI** (installable PWA) that gives you a mobile-friendly chat interface.
+**Antigravity Agent MCP Bridge & Remote Access**
+
+Porta exposes local [Antigravity](https://antigravity.google/) Language Server / Connect RPC capabilities as a standards-compliant **Model Context Protocol (MCP) server** (primary direction for Gemini Spark and other MCP clients) while retaining the legacy **Porta Web UI** as an optional remote interface.
+
+## Architecture
+
+```mermaid
+flowchart TD
+  Client[MCP Client: Gemini Spark / Codex / Claude Desktop] -->|stdio or Streamable HTTP/SSE| MCP[packages/mcp: Antigravity MCP Server]
+  WebClient[Browser / Mobile PWA] -->|HTTP / WebSocket| Proxy[packages/proxy: Legacy Porta Proxy]
+
+  subgraph Core [Shared Core: packages/proxy]
+    MCP --> Discovery[LS Discovery & Daemon Watcher]
+    MCP --> Routing[Workspace & Affinity Router]
+    MCP --> Metadata[Project Metadata & Assoc]
+    MCP --> RPC[Connect RPC Client / Fallback]
+    MCP --> Mutation[Serialized Mutation Queue]
+    Proxy --> Discovery
+    Proxy --> Routing
+    Proxy --> Metadata
+    Proxy --> RPC
+    Proxy --> Mutation
+  end
+
+  Core -->|Connect RPC / HTTPS / HTTP| LS[Antigravity Language Server instances]
+```
+
+## MCP Server Usage
+
+### 1. Launch Modes
+
+#### A. Stdio Mode
+```bash
+pnpm --filter @porta/mcp start:stdio
+# or from repository root:
+pnpm mcp:stdio
+```
+
+#### B. Streamable HTTP / Network Transport
+```bash
+MCP_HOST=127.0.0.1 MCP_PORT=3200 pnpm --filter @porta/mcp start:http
+# or from repository root:
+pnpm mcp:http
+```
+Default bind is `127.0.0.1:3200`. The HTTP endpoint is `http://127.0.0.1:3200/mcp` (health check at `/health`).
+
+### 2. Configuration & Environment Variables
+- `MCP_HOST`: Host to bind for HTTP transport (default: `127.0.0.1`).
+- `MCP_PORT`: Port to listen for HTTP transport (default: `3200`).
+- `PORTA_INCLUDE_ANTIGRAVITY_IDE=1`: Opt in to discover Antigravity IDE.app instances alongside Antigravity.app.
+
+### 3. Gemini Spark / MCP Client Configuration
+
+#### Stdio configuration example:
+```json
+{
+  "mcpServers": {
+    "antigravity": {
+      "command": "node",
+      "args": [
+        "/Users/wilden/Projects/porta/packages/mcp/dist/bin.js",
+        "--stdio"
+      ],
+      "env": {
+        "PORTA_INCLUDE_ANTIGRAVITY_IDE": "0"
+      }
+    }
+  }
+}
+```
+
+#### Streamable HTTP endpoint configuration example:
+```json
+{
+  "mcpServers": {
+    "antigravity": {
+      "url": "http://127.0.0.1:3200/mcp"
+    }
+  }
+}
+```
+
+### 4. MCP Tools Reference
+
+| Tool Name | Underlying RPC / Source | Description |
+| :--- | :--- | :--- |
+| `antigravity_list_projects` | Project Config & Metadata | Lists configured Antigravity projects (`projectId`, decoded `name`, `folderUris`). |
+| `antigravity_list_workspaces` | `GetWorkspaceInfos` / Summaries | Lists active workspace folder URIs and their resolved project associations. |
+| `antigravity_list_conversations` | `GetAllCascadeTrajectories` | Lists conversation cascades with status, stepCount, and workspace/project filters. |
+| `antigravity_get_conversation` | `GetCascadeTrajectory` | Returns complete trajectory details and configuration for a conversation. |
+| `antigravity_get_steps` | `GetCascadeTrajectorySteps` | Returns execution steps supporting `offset`, `limit`, `tail`, and protobuf error recovery. |
+| `antigravity_start` | `StartCascade` + `SendUserCascadeMessage` | Creates a new conversation with proper `projectId` / `workspaceUris` and sends initial prompt. |
+| `antigravity_continue` | `SendUserCascadeMessage` | Sends follow-up prompts with serialized mutation ordering per conversation. |
+| `antigravity_stop` | `CancelCascadeInvocation` | Cancels ongoing active agent execution. |
+| `antigravity_delete` | `DeleteCascadeTrajectory` | Deletes conversation trajectory and clears cache. |
+| `antigravity_revert` | `RevertToCascadeStep` | Reverts conversation back to a specific step index. |
+| `antigravity_command_action` | `HandleCascadeUserInteraction` | Approves or rejects proposed terminal command executions (`permission.allow`). |
+| `antigravity_file_permission` | `HandleCascadeUserInteraction` | Grants or denies filesystem access requests (`filePermission`). |
+| `antigravity_answer_question` | `HandleCascadeUserInteraction` | Answers or cancels interactive choice prompts (`askQuestion`). |
+| `antigravity_status` | Aggregated State | Returns simplified status (`running`, `waiting_for_command_approval`, `completed`, etc.) & interaction details. |
+| `antigravity_wait` | Polling Loop | Polls conversation status until terminal status or user interaction needed. |
+| `antigravity_models` | `GetCascadeModelConfigData` | Lists model capabilities and configurations supported by Antigravity LS. |
+
+### 5. Minimal Usage Workflow Example
+
+1. **List available projects and workspaces:**
+   Call `antigravity_list_workspaces` to inspect open workspace folders.
+2. **Start a new agent task:**
+   Call `antigravity_start` with `workspaceUri: "file:///path/to/project"` and `prompt: "Run the test suite"`.
+3. **Wait or poll status:**
+   Call `antigravity_wait` with `conversationId: "<id>"`. If it returns `status: "waiting_for_command_approval"`, inspect `requiredInteraction`.
+4. **Approve command:**
+   Call `antigravity_command_action` with `conversationId`, `trajectoryId`, `stepIndex`, and `approved: true`.
+5. **Continue conversation:**
+   Call `antigravity_continue` with follow-up instructions.
+
+> **Note on Legacy Porta Web UI:** The original Porta Web UI is preserved and fully functional for backward compatibility, but MCP integration is now the canonical interface for programmatic desktop agent control.
 
 <p align="center">
   <img src="docs/screenshot.png" alt="Porta — desktop and mobile" width="720">

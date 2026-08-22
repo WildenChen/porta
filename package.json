@@ -1,8 +1,11 @@
 {
   "name": "porta",
+  "description": "Antigravity Agent MCP Bridge & Remote Access",
   "version": "0.16.0+wilden.01",
   "private": true,
   "scripts": {
+    "mcp:stdio": "pnpm --filter @porta/mcp start:stdio",
+    "mcp:http": "pnpm --filter @porta/mcp start:http",
     "dev": "node scripts/dev.mjs",
     "dev:cloud": "node scripts/dev-cloud.mjs",
     "dev:tailscale": "node scripts/dev-tailscale.mjs",

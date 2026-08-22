@@ -1,0 +1,31 @@
+{
+  "name": "@porta/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "porta-mcp": "./dist/bin.js"
+  },
+  "scripts": {
+    "dev:stdio": "tsx src/bin.ts --stdio",
+    "dev:http": "tsx src/bin.ts --http",
+    "start:stdio": "node dist/bin.js --stdio",
+    "start:http": "node dist/bin.js --http",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.10",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@porta/proxy": "workspace:*",
+    "hono": "^4.12.34",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0"
+  }
+}
