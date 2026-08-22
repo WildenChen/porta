@@ -3,28 +3,23 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createAntigravityMcpServer } from "./server.js";
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 
 const args = process.argv.slice(2);
 const isHttp = args.includes("--http") || !!process.env.MCP_HTTP || process.env.MCP_TRANSPORT === "http";
 
 async function main() {
-  const mcpServer = createAntigravityMcpServer();
-
   if (isHttp) {
     const host = process.env.MCP_HOST || "127.0.0.1";
     const port = parseInt(process.env.MCP_PORT || "3200", 10);
+    const transports = new Map<string, StreamableHTTPServerTransport>();
 
-    // In stateless mode, session validation is not required for incoming requests
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-    await mcpServer.connect(transport);
-
-    const httpServer = createServer((req, res) => {
+    const httpServer = createServer(async (req, res) => {
       // CORS headers for local/remote dev environments
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-porta-target-app");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-porta-target-app, Mcp-Session-Id");
+      res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 
       if (req.method === "OPTIONS") {
         res.writeHead(204);
@@ -38,8 +33,25 @@ async function main() {
         return;
       }
 
-      if (req.url === "/mcp" || req.url === "/") {
-        void transport.handleRequest(req, res);
+      if (req.url?.startsWith("/mcp") || req.url === "/") {
+        const sessionId = req.headers["mcp-session-id"] as string | undefined;
+        let transport = sessionId ? transports.get(sessionId) : undefined;
+
+        if (!transport) {
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (id) => {
+              if (transport) transports.set(id, transport);
+            },
+            onsessionclosed: (id) => {
+              transports.delete(id);
+            },
+          });
+          const server = createAntigravityMcpServer();
+          await server.connect(transport);
+        }
+
+        await transport.handleRequest(req, res);
         return;
       }
 
@@ -51,6 +63,7 @@ async function main() {
       console.error(`[antigravity-mcp-bridge] HTTP/SSE transport listening on http://${host}:${port}/mcp`);
     });
   } else {
+    const mcpServer = createAntigravityMcpServer();
     const transport = new StdioServerTransport();
     await mcpServer.connect(transport);
     console.error("[antigravity-mcp-bridge] stdio transport connected");
