@@ -1,4 +1,5 @@
 packages:
+  - packages/mcp
   - packages/proxy
   - packages/web
 
