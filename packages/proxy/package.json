@@ -5,6 +5,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./routes/search.js": {
+      "types": "./dist/routes/search.d.ts",
+      "import": "./dist/routes/search.js"
+    },
     "./*.js": {
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js"

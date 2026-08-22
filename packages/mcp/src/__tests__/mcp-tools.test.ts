@@ -114,6 +114,7 @@ describe("Antigravity MCP Server", () => {
       "antigravity_list_workspaces",
       "antigravity_models",
       "antigravity_revert",
+      "antigravity_search_conversations",
       "antigravity_start",
       "antigravity_status",
       "antigravity_stop",
@@ -197,6 +198,82 @@ describe("Antigravity MCP Server", () => {
       }),
       inst,
     );
+  });
+
+  it("antigravity_continue supports structured items and media payload", async () => {
+    const inst = makeInstance();
+    mockGetStepCount.mockResolvedValue({ count: 10, instance: inst });
+    mockRpcForConversation.mockResolvedValue({ ok: true });
+
+    const items = [{ text: "custom item 1" }, { text: "custom item 2" }];
+    const media = [{ mimeType: "image/png", inlineData: "base64data" }];
+
+    const res = await client.callTool({
+      name: "antigravity_continue",
+      arguments: {
+        conversationId: "cascade-123",
+        items,
+        media,
+      },
+    });
+
+    const data = JSON.parse((res.content[0] as any).text);
+    expect(data.success).toBe(true);
+    expect(mockRpcForConversation).toHaveBeenCalledWith(
+      "SendUserCascadeMessage",
+      "cascade-123",
+      expect.objectContaining({
+        cascadeId: "cascade-123",
+        items,
+        media,
+      }),
+      inst,
+    );
+  });
+
+  it("antigravity_search_conversations returns matching conversations and snippets", async () => {
+    mockRpcCall.mockImplementation(async (method: string, body: any) => {
+      if (method === "GetAllCascadeTrajectories") {
+        return {
+          trajectorySummaries: {
+            "c-1": { title: "Refactor MCP Server", summary: "Summary text" },
+            "c-2": { title: "Other Task", summary: "Other summary" },
+          },
+        };
+      }
+      if (method === "GetCascadeTrajectorySteps") {
+        if (body.cascadeId === "c-1") {
+          return {
+            steps: [
+              { userInput: { items: [{ text: "Please help refactor the MCP bridge." }] } },
+            ],
+          };
+        }
+        if (body.cascadeId === "c-2") {
+          return {
+            steps: [
+              { userInput: { items: [{ text: "Unrelated conversation." }] } },
+            ],
+          };
+        }
+      }
+      return {};
+    });
+
+    const res = await client.callTool({
+      name: "antigravity_search_conversations",
+      arguments: {
+        query: "refactor",
+      },
+    });
+
+    const data = JSON.parse((res.content[0] as any).text);
+    expect(data.query).toBe("refactor");
+    expect(data.results).toHaveLength(1);
+    expect(data.results[0].conversationId).toBe("c-1");
+    expect(data.results[0].title).toBe("Refactor MCP Server");
+    expect(data.results[0].snippets.length).toBeGreaterThan(0);
+    expect(data.results[0].snippets[0].toLowerCase()).toContain("refactor");
   });
 
   it("antigravity_status returns simplified status and required command interaction", async () => {

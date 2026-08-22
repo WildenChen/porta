@@ -98,6 +98,7 @@ Default bind is `127.0.0.1:3200`. The HTTP endpoint is `http://127.0.0.1:3200/mc
 | `antigravity_list_projects` | Project Config & Metadata | Lists configured Antigravity projects (`projectId`, decoded `name`, `folderUris`). |
 | `antigravity_list_workspaces` | `GetWorkspaceInfos` / Summaries | Lists active workspace folder URIs and their resolved project associations. |
 | `antigravity_list_conversations` | `GetAllCascadeTrajectories` | Lists conversation cascades with status, stepCount, and workspace/project filters. |
+| `antigravity_search_conversations` | `GetAllCascadeTrajectories` + Steps Search | Full-text search across conversation titles, user messages, agent responses, and tool calls. |
 | `antigravity_get_conversation` | `GetCascadeTrajectory` | Returns complete trajectory details and configuration for a conversation. |
 | `antigravity_get_steps` | `GetCascadeTrajectorySteps` | Returns execution steps supporting `offset`, `limit`, `tail`, and protobuf error recovery. |
 | `antigravity_start` | `StartCascade` + `SendUserCascadeMessage` | Creates a new conversation with proper `projectId` / `workspaceUris` and sends initial prompt. |

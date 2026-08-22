@@ -28,6 +28,7 @@ import {
   getConversationStatus,
   waitForConversation,
 } from "./status.js";
+import { searchConversations } from "@porta/proxy/routes/search.js";
 
 function formatToolError(err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
@@ -226,6 +227,33 @@ export function registerAllTools(server: McpServer) {
     },
   );
 
+  // antigravity_search_conversations
+  server.tool(
+    "antigravity_search_conversations",
+    "Search across conversation titles, user prompts, agent responses, commands, and code actions using full-text search.",
+    {
+      query: z.string().min(1).describe("Search query text"),
+    },
+    async ({ query }) => {
+      try {
+        const searchResult = await searchConversations(query);
+        return formatToolSuccess({
+          query: searchResult.query,
+          totalConversations: searchResult.totalConversations,
+          elapsedMs: searchResult.elapsedMs,
+          results: searchResult.results.map((item) => ({
+            conversationId: item.id,
+            title: item.title,
+            snippets: item.snippets,
+            matchCount: item.matchCount,
+          })),
+        });
+      } catch (err) {
+        return formatToolError(err);
+      }
+    },
+  );
+
   // 4. antigravity_get_conversation
   server.tool(
     "antigravity_get_conversation",
@@ -386,14 +414,25 @@ export function registerAllTools(server: McpServer) {
     "Send a new user prompt / message to an existing conversation with serialized mutation ordering.",
     {
       conversationId: z.string().describe("The cascade / conversation ID"),
-      prompt: z.string().describe("Prompt or message text"),
+      prompt: z.string().optional().describe("Convenience text prompt. Will be formatted into items: [{ text: prompt }] if items is omitted."),
+      items: z.array(z.record(z.unknown())).optional().describe("Structured message items array, e.g. [{ text: '...' }]"),
+      media: z.array(z.record(z.unknown())).optional().describe("Optional media attachments array, e.g. [{ mimeType: 'image/png', inlineData: '...' }]"),
       model: z.string().optional().describe("Model name (optional)"),
       plannerType: z.enum(["planning", "conversational"]).optional().describe("Planner type (optional)"),
       fileAccessGranted: z.boolean().optional().describe("Grant file system access permission (defaults to true)"),
       targetApp: z.enum(["all", "antigravity", "antigravity-ide"]).optional().describe("Target engine filter"),
     },
-    async ({ conversationId, prompt, model, plannerType, fileAccessGranted = true, targetApp }) => {
+    async ({ conversationId, prompt, items, media, model, plannerType, fileAccessGranted = true, targetApp }) => {
       try {
+        const resolvedItems = Array.isArray(items) && items.length > 0
+          ? items
+          : typeof prompt === "string"
+            ? [{ text: prompt }]
+            : [];
+        if (resolvedItems.length === 0 && (!Array.isArray(media) || media.length === 0)) {
+          throw new Error("Either prompt, items, or media must be provided");
+        }
+
         const result = await runConversationMutation(conversationId, async () => {
           const metadata = await getMetadata(!!fileAccessGranted);
           const { instance } = await getStepCount(conversationId, undefined, false, targetApp);
@@ -401,8 +440,11 @@ export function registerAllTools(server: McpServer) {
           const req: Record<string, unknown> = {
             metadata,
             cascadeId: conversationId,
-            items: [{ text: prompt }],
+            items: resolvedItems,
           };
+          if (media && Array.isArray(media) && media.length > 0) {
+            req.media = media;
+          }
           if (model || plannerType) {
             req.cascadeConfig = {
               plannerConfig: {
